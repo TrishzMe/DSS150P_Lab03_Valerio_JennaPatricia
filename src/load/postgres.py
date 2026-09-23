@@ -3,6 +3,8 @@ import logging
 
 import pandas as pd
 
+from src.common.audit import utc_now
+from src.common.layers import partition_key
 from src.load.db import connect
 from src.transform.curated import CURATED_COLUMNS
 
@@ -53,8 +55,37 @@ def upsert_rows(conn, df: pd.DataFrame) -> dict[str, int]:
 
 
 def load_partition(df, year: int, month: int, run_id: str) -> int:
-    """Load only a selected year/month partition and record audit.partition_loads."""
-    raise NotImplementedError('Implement Goal 3 selected-partition load')
+    """Load only a selected year/month partition and record audit.partition_loads.
+
+    The rows go through the same order_id UPSERT as a full load, so reloading a
+    partition cannot duplicate business rows. The audit row is written in the
+    same transaction: either both commit or neither does.
+    Returns the number of rows written (inserted + updated).
+    """
+    ts = pd.to_datetime(df['order_timestamp'], utc=True)
+    outside = int(((ts.dt.year != year) | (ts.dt.month != month)).sum())
+    if outside:
+        raise ValueError(f'{outside} row(s) do not belong to partition {year}-{month:02d}')
+    key = partition_key(year, month)
+    with connect() as conn:
+        counts = upsert_rows(conn, df)
+        conn.execute(_PARTITION_AUDIT_SQL, {
+            'key': key, 'loaded_at': utc_now(), 'rows': len(df), 'run': run_id,
+            'inserted': counts['inserted'], 'updated': counts['updated'], 'unchanged': counts['unchanged']})
+    log.info('run_id=%s partition %s (%s rows): %s', run_id, key, len(df), _describe(counts))
+    return counts['inserted'] + counts['updated']
+
+
+_PARTITION_AUDIT_SQL = """
+    INSERT INTO audit.partition_loads (partition_key, loaded_at_utc, row_count, pipeline_run_id,
+                                       rows_inserted, rows_updated, rows_unchanged, load_count)
+    VALUES (%(key)s, %(loaded_at)s, %(rows)s, %(run)s, %(inserted)s, %(updated)s, %(unchanged)s, 1)
+    ON CONFLICT (partition_key) DO UPDATE SET
+        loaded_at_utc = EXCLUDED.loaded_at_utc, row_count = EXCLUDED.row_count,
+        pipeline_run_id = EXCLUDED.pipeline_run_id, rows_inserted = EXCLUDED.rows_inserted,
+        rows_updated = EXCLUDED.rows_updated, rows_unchanged = EXCLUDED.rows_unchanged,
+        load_count = audit.partition_loads.load_count + 1
+"""
 
 
 def _describe(counts: dict[str, int]) -> str:

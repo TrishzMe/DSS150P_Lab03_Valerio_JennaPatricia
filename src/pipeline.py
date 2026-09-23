@@ -13,11 +13,13 @@ import pandas as pd
 
 from src.common.audit import env_run_id, new_run_id, utc_now_iso
 from src.common.errors import DataValidationError, PipelineStageError
+from src.benchmark.storage import read_partition, run_benchmark, write_partitioned_parquet
 from src.common.layers import latest_run_id, mark_latest, read_json, relative, run_dir, write_json, write_parquet
+from src.config import path_for
 from src.extract.files import MANIFEST, extract_sources
 from src.load import run_audit
 from src.load.db import connect
-from src.load.postgres import upsert_curated
+from src.load.postgres import load_partition as load_partition_rows, upsert_curated
 from src.transform.curated import build_curated
 from src.transform.staging import QUARANTINE_COLUMNS, build_staging
 from src.validate.quality import validate_curated, validate_warehouse
@@ -94,12 +96,14 @@ def transform(run_id: str) -> StageResult:
 
     summary = _summary(run_id, raw_counts, staging, staging_quarantine, curated, curated_quarantine)
     write_json(summary, curated_dir / SUMMARY_FILE)
+    partitions = write_partitioned_parquet(curated, path_for('partition_dir'))
     mark_latest('curated', run_id)
 
     rows_staging = sum(len(df) for df in staging.values())
     return StageResult(
         f"staging customers={len(staging['customers'])} products={len(staging['products'])} "
-        f"orders={len(staging['orders'])}; curated={len(curated)}; quarantined={len(quarantine)}",
+        f"orders={len(staging['orders'])}; curated={len(curated)} in {len(partitions)} year/month partitions; "
+        f"quarantined={len(quarantine)}",
         rows_in=sum(raw_counts.values()), rows_out=len(curated),
         run_counts={'rows_staging': rows_staging, 'rows_curated': len(curated), 'rows_quarantined': len(quarantine)})
 
@@ -113,6 +117,27 @@ def load(run_id: str) -> StageResult:
     return StageResult(f'curated.sales_order_lines upsert: {written} written, '
                        f'{len(curated) - written} unchanged (record_hash match)',
                        rows_in=len(curated), rows_out=written)
+
+
+def load_partition(run_id: str, year: int, month: int) -> StageResult:
+    partition = read_partition(path_for('partition_dir'), year, month)
+    produced_by = set(partition['pipeline_run_id'])
+    if produced_by != {run_id}:
+        raise ValueError(f'partitioned dataset was produced by {sorted(produced_by)}, not {run_id}; '
+                         f'run transform for this run first')
+    errors = validate_curated(partition.drop(columns=['order_year', 'order_month']))
+    if errors:
+        raise DataValidationError(errors)
+    written = load_partition_rows(partition, year, month, run_id)
+    return StageResult(f'partition {year}-{month:02d}: {len(partition)} rows, {written} written, '
+                       f'{len(partition) - written} unchanged', rows_in=len(partition), rows_out=written)
+
+
+def benchmark(run_id: str, repeats: int) -> StageResult:
+    output_dir = path_for('benchmark_dir')
+    results = run_benchmark(run_dir('curated', run_id) / CURATED_FILE, output_dir, repeats)
+    return StageResult(f'{len(results)} storage results (median of {repeats} runs) in '
+                       f'{relative(output_dir / "benchmark_results.csv")}', rows_in=int(results['row_count'].max()))
 
 
 def validate(run_id: str, year: int | None = None, month: int | None = None) -> StageResult:
