@@ -6,7 +6,46 @@
 **Starter package:** [jrnmapanao/dss150p-lab03-starter](https://github.com/jrnmapanao/dss150p-lab03-starter)
 
 This repository turns the starter's ad hoc pipeline into a reproducible, modular, containerized
-pipeline for an e-commerce sales-order-line dataset.
+pipeline for an e-commerce sales-order-line dataset. The pipeline runs raw → staging → curated
+(plus quarantine), loads PostgreSQL rerun-safely, benchmarks storage formats, partitions by
+year/month, and is orchestrated by Apache Airflow.
+
+## Where to find each deliverable
+
+| Deliverable (§12) | Location |
+|---|---|
+| Goal 1: environment, versions, config separation | [docs/goal1_environment.md](docs/goal1_environment.md), `docs/evidence/goal1_*` |
+| Goal 2: layers, rules, counts, audit columns, rerun safety, error handling | [docs/goal2_pipeline.md](docs/goal2_pipeline.md), [docs/data_dictionary.csv](docs/data_dictionary.csv), `docs/evidence/goal2_*` |
+| Goal 3: benchmark results and interpretation, partitions, partition load | [docs/goal3_storage_benchmark.md](docs/goal3_storage_benchmark.md), [data/benchmarks/](data/benchmarks/), `docs/evidence/goal3_*` |
+| Goal 4: DAG, full/partition/failure/recovery runs | [docs/goal4_airflow.md](docs/goal4_airflow.md), `docs/evidence/goal4_*`, [docs/evidence/screenshots/](docs/evidence/screenshots/) |
+| Filled run-evidence template | [docs/run_evidence.md](docs/run_evidence.md) |
+| Technical reflection and §15 answers | [docs/technical_reflection.md](docs/technical_reflection.md) |
+| Integrated acceptance test (§11), from a fresh clone | [docs/evidence/integrated_acceptance_test.txt](docs/evidence/integrated_acceptance_test.txt) |
+| AI use disclosure (§16) | [docs/ai_use_disclosure.md](docs/ai_use_disclosure.md) |
+
+## Repository layout
+
+```
+config/settings.yml        non-secret defaults (paths, sources, DB defaults, quality rules, benchmark)
+.env.example               template for secrets/machine values (.env itself is git-ignored)
+src/config.py              the only reader of settings.yml and the environment
+src/cli.py                 thin CLI: validate-env, extract, transform, load, validate, run-all, benchmark, load-partition
+src/pipeline.py            stage runner: logging, audit rows, stage-aware errors
+src/common/                UTC/run-id/hash helpers, layer paths + atomic writes, exception types
+src/extract/files.py       run-specific raw snapshot + SHA-256 manifest
+src/transform/staging.py   typing, normalization, latest-version dedup, validity rules, quarantine
+src/transform/curated.py   joins, orphan quarantine, exact amounts, record_hash
+src/load/                  connection, UPSERT, partition load, audit.stage_runs / pipeline_runs
+src/validate/              environment checks, curated-file and warehouse/audit-trail checks
+src/benchmark/storage.py   CSV/JSONL/Parquet/PostgreSQL benchmark, partitioned Parquet read/write
+dags/dss150p_pipeline.py   Airflow DAG (orchestration only; calls the CLI)
+sql/init/                  00 databases, 01 warehouse (starter), 02 stage audit, 03 partition audit
+tests/                     16 unit tests (no database needed)
+scripts/inspect_layers.py  read-only layer/quarantine/audit report used for evidence
+data/source/               provided sources (unchanged, byte-for-byte; see .gitattributes)
+data/benchmarks/           committed benchmark result tables (format files are regenerated)
+docs/                      write-ups, data dictionary, evidence transcripts and screenshots
+```
 
 ## Prerequisites
 
@@ -118,6 +157,30 @@ Configuration rationale, run evidence, rerun safety, and backfill reasoning:
 [docs/goal4_airflow.md](docs/goal4_airflow.md). Task logs are written to `logs/` (not committed),
 and retry/failure callback events to `logs/dss150p_task_events.jsonl`.
 
+## Integrated technical acceptance test (§11)
+
+From a fresh clone (after `cp .env.example .env` and the venv setup above):
+
+```bash
+# Goal 1 environment
+python -m src.cli validate-env
+docker compose up -d postgres
+# Goal 2 full pipeline
+python -m src.cli run-all
+python -m src.cli load
+python -m src.cli validate
+# Goal 3 benchmark and partition
+python -m src.cli benchmark --repeats 5
+python -m src.cli load-partition --year 2026 --month 1
+# Goal 4 Airflow
+docker compose -f docker-compose.yml -f docker-compose.airflow.yml up airflow-init
+docker compose -f docker-compose.yml -f docker-compose.airflow.yml up -d airflow-webserver airflow-scheduler
+```
+
+Wait for `docker compose ps` to show `dss150p-postgres` as healthy before `run-all`. The recorded
+run of this exact sequence in a fresh clone is
+[docs/evidence/integrated_acceptance_test.txt](docs/evidence/integrated_acceptance_test.txt).
+
 ## Configuration
 
 | File | Committed | Purpose |
@@ -145,3 +208,25 @@ See [docs/goal1_environment.md](docs/goal1_environment.md).
 | Triggered run stays queued | the DAG starts paused: `airflow dags unpause dss150p_sales_pipeline` (or the toggle in the UI) |
 | Airflow cannot log in to its metadata DB | the `airflow` database is created by `sql/init/00_create_databases.sql` only on a fresh volume; re-initialize with `docker compose down -v` (**deletes lab data**) |
 | `no curated output found` | run `python -m src.cli run-all` first; `load`/`validate` operate on an existing run |
+
+## Submission checklist (§17)
+
+| Item | Status / evidence |
+|---|---|
+| No `.env`/secrets committed | `.env` ignored and untracked; literal-password scan clean ([goal1_03](docs/evidence/goal1_03_config_and_git.txt)) |
+| Source files unchanged | `data/source/*` SHA-256 identical to the starter; stored byte-for-byte via `.gitattributes` |
+| Rerun-safe PostgreSQL load verified | reloads and a new run write 0 rows; 49,897 = 49,897 distinct ([goal2_01](docs/evidence/goal2_01_run_all_and_rerun_safety.txt)) |
+| Partitioned Parquet and selected-partition load verified | [goal3_01](docs/evidence/goal3_01_partitioning_and_partition_load.txt) |
+| Git history includes Goal 1–4 checkpoints | branches `goal1-…` to `goal4-…`, merge commits, tags `goal1`–`goal4` |
+| All required commands documented in README | sections 1–4 and the integrated test above |
+| Staging/curated/quarantine outputs reproducible | every run rebuilds them from `data/source`; a second run produced identical `record_hash` values (0 rows rewritten) |
+| Benchmark results and interpretation included | [data/benchmarks/](data/benchmarks/), [goal3 doc](docs/goal3_storage_benchmark.md) |
+| Airflow full/partition/failure/recovery evidence included | [goal4 doc](docs/goal4_airflow.md), transcripts, screenshots |
+| Repository runs without undocumented manual edits | recorded fresh-clone run: [integrated_acceptance_test.txt](docs/evidence/integrated_acceptance_test.txt) |
+
+## AI usage
+
+I used Claude (Anthropic) through Claude Code for profiling, implementation, debugging, capturing
+evidence, and drafting documentation. What it did and what I verified are described in
+[docs/ai_use_disclosure.md](docs/ai_use_disclosure.md). Commits made with its help carry a
+`Co-Authored-By` line.
