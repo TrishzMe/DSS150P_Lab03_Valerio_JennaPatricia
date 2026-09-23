@@ -28,17 +28,25 @@ services:
   airflow-init:
     <<: *airflow-common
     container_name: dss150p-airflow-init
+    # Only a failed migration fails init; an already-existing admin user is fine.
     entrypoint: /bin/bash
     command:
       - -c
       - |
         airflow db migrate &&
-        airflow users create --username "$${AIRFLOW_ADMIN_USER:?set in .env}" --password "$${AIRFLOW_ADMIN_PASSWORD:?set in .env}" --firstname DSS150P --lastname Admin --role Admin --email admin@example.com || true
+        { airflow users create --username "$${AIRFLOW_ADMIN_USER:?set in .env}" --password "$${AIRFLOW_ADMIN_PASSWORD:?set in .env}" --firstname DSS150P --lastname Admin --role Admin --email admin@example.com || true; }
 
   airflow-webserver:
     <<: *airflow-common
     container_name: dss150p-airflow-webserver
     command: webserver
+    depends_on: &after-init
+      postgres:
+        condition: service_healthy
+      # `up -d airflow-webserver airflow-scheduler` runs airflow-init first on a fresh
+      # volume, so the metadata DB is always migrated before either service starts.
+      airflow-init:
+        condition: service_completed_successfully
     ports:
       - "8080:8080"
     healthcheck:
@@ -51,3 +59,4 @@ services:
     <<: *airflow-common
     container_name: dss150p-airflow-scheduler
     command: scheduler
+    depends_on: *after-init

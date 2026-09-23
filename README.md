@@ -134,6 +134,9 @@ docker compose -f docker-compose.yml -f docker-compose.airflow.yml ps
 docker exec dss150p-airflow-scheduler airflow dags unpause dss150p_sales_pipeline
 ```
 
+`airflow-webserver` and `airflow-scheduler` depend on `airflow-init` completing successfully, so the
+second `up` command also works on its own (the §11 sequence): it migrates the metadata DB first.
+
 UI: http://localhost:8080. The login comes from `AIRFLOW_ADMIN_USER` / `AIRFLOW_ADMIN_PASSWORD` in `.env`
 (`admin`/`admin` in `.env.example`; local training use only).
 
@@ -172,8 +175,7 @@ python -m src.cli validate
 # Goal 3 benchmark and partition
 python -m src.cli benchmark --repeats 5
 python -m src.cli load-partition --year 2026 --month 1
-# Goal 4 Airflow
-docker compose -f docker-compose.yml -f docker-compose.airflow.yml up airflow-init
+# Goal 4 Airflow (airflow-init runs automatically first)
 docker compose -f docker-compose.yml -f docker-compose.airflow.yml up -d airflow-webserver airflow-scheduler
 ```
 
@@ -204,6 +206,7 @@ See [docs/goal1_environment.md](docs/goal1_environment.md).
 | Password changed after first start | the volume keeps the original password: `docker compose down -v` to re-initialize (**deletes lab data**) |
 | `relation "audit.stage_runs" does not exist` or `column "load_count" ... does not exist` | the volume was initialized before `sql/init/02_audit_schema.sql`/`03_partition_audit.sql` existed: pipe each file into `docker exec -i dss150p-postgres psql -U dss150p -d dss150p < sql/init/<file>` (both are idempotent) |
 | `partition 2026-01 not found` | run `transform` (or `run-all`) first; it writes `data/partitioned/` |
+| `ImportError: no pq wrapper available ... The filename or extension is too long` (Windows) | the clone path is too deep for Windows' 260-character limit (psycopg's DLLs sit deep inside `.venv`); clone into a short path such as `C:\Users\<you>\Downloads\...` |
 | DAG not visible / import error | `docker exec dss150p-airflow-scheduler airflow dags list-import-errors`; the file must be under `dags/` (mounted at `/opt/airflow/dags`) |
 | Triggered run stays queued | the DAG starts paused: `airflow dags unpause dss150p_sales_pipeline` (or the toggle in the UI) |
 | Airflow cannot log in to its metadata DB | the `airflow` database is created by `sql/init/00_create_databases.sql` only on a fresh volume; re-initialize with `docker compose down -v` (**deletes lab data**) |
