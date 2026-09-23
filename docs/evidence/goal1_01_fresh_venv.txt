@@ -1,0 +1,56 @@
+# Goal 1 / Task A - fresh virtual environment built from requirements.txt
+# Captured 2026-09-23T00:20:40Z on MINGW64_NT-10.0-26200 (Git Bash, Windows 11); .venv deleted first
+
+$ rm -rf .venv && python -m venv .venv && source .venv/Scripts/activate
+$ python --version
+Python 3.12.10
+$ python -m pip install --upgrade pip
+pip 26.2.1 from C:\Users\jenna\Downloads\DSS150P_Lab03_Valerio_JennaPatricia\.venv\Lib\site-packages\pip (python 3.12)
+$ pip install -r requirements.txt
+Successfully installed PyYAML-6.0.2 colorama-0.4.6 iniconfig-2.3.0 numpy-2.1.3 packaging-26.3 pandas-2.2.3 pluggy-1.6.0 psycopg-3.2.3 psycopg-binary-3.2.3 pyarrow-17.0.0 pytest-8.3.3 python-dateutil-2.9.0.post0 python-dotenv-1.0.1 pytz-2024.2 six-1.16.0 typing_extensions-4.16.0 tzdata-2024.2
+
+$ pip freeze
+colorama==0.4.6
+iniconfig==2.3.0
+numpy==2.1.3
+packaging==26.3
+pandas==2.2.3
+pluggy==1.6.0
+psycopg==3.2.3
+psycopg-binary==3.2.3
+pyarrow==17.0.0
+pytest==8.3.3
+python-dateutil==2.9.0.post0
+python-dotenv==1.0.1
+pytz==2024.2
+PyYAML==6.0.2
+six==1.16.0
+typing_extensions==4.16.0
+tzdata==2024.2
+
+$ pip check
+No broken requirements found.
+
+$ python -m src.cli validate-env   (PostgreSQL container running)
+python          : 3.12.10 (C:\Users\jenna\Downloads\DSS150P_Lab03_Valerio_JennaPatricia\.venv\Scripts\python.exe)
+platform        : Windows-11-10.0.26200-SP0
+package         : pandas==2.2.3
+package         : pyarrow==17.0.0
+package         : numpy==2.1.3
+package         : psycopg==3.2.3
+package         : PyYAML==6.0.2
+package         : python-dotenv==1.0.1
+PROJECT_ROOT    : C:\Users\jenna\Downloads\DSS150P_Lab03_Valerio_JennaPatricia
+.env file       : present
+DB target       : dss150p@localhost:5432/dss150p
+DB password set : yes
+audit timezone  : UTC
+source dir      : C:\Users\jenna\Downloads\DSS150P_Lab03_Valerio_JennaPatricia\data\source
+source file     : customers.csv (351,125 bytes)
+source file     : products.json (160,497 bytes)
+source file     : orders.csv (4,856,331 bytes)
+PostgreSQL      : 16.15 (Debian 16.15-1.pgdg13+2), database=dss150p
+schemas present : audit, curated, staging
+tables present  : audit.partition_loads, audit.pipeline_runs, curated.sales_order_lines
+validate-env    : OK
+exit code: 0

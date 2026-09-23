@@ -4,10 +4,11 @@ services:
     container_name: dss150p-postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-dss150p}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+      # No default on purpose: the password must come from .env (see .env.example).
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env (cp .env.example .env)}
       POSTGRES_DB: postgres
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./sql/init:/docker-entrypoint-initdb.d:ro
@@ -24,14 +25,17 @@ services:
     container_name: dss150p-pipeline
     env_file: .env
     environment:
+      # Inside the Compose network the database is the `postgres` service on its
+      # internal port, whatever host port .env publishes.
       POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
     working_dir: /app
     volumes:
       - .:/app
     depends_on:
       postgres:
         condition: service_healthy
-    command: ["python", "-m", "src.cli", "validate-env"]
+    command: ["python", "-m", "src.cli", "validate-env", "--require-db"]
 
 volumes:
   pgdata:

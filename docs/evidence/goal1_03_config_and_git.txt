@@ -1,0 +1,37 @@
+# Goal 1 / Tasks C and E - configuration/secret checks and Git checkpoint
+# Captured 2026-09-23T00:24:07Z
+# The lab's scan pattern is written as the equivalent regex change[_]me so that this
+# transcript, once committed, does not match its own command line.
+
+$ git grep -n "change[_]me" -- ":(exclude).env.example" || true
+(no output = no committed file other than .env.example contains the training password)
+
+$ git grep -n -i -E "password\s*[:=]\s*\S" -- "*.py" "*.yml" "*.yaml" "*.sql" "dags/*" || true
+docker-compose.airflow.yml:13:    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-dss150p}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres/airflow
+docker-compose.airflow.yml:34:        airflow users create --username "$${AIRFLOW_ADMIN_USER:?set in .env}" --password "$${AIRFLOW_ADMIN_PASSWORD:?set in .env}" --firstname DSS150P --lastname Admin --role Admin --email admin@example.com || true
+docker-compose.yml:8:      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env (cp .env.example .env)}
+(only ${...} interpolations from .env, no literal values)
+
+$ git status --short
+?? docs/evidence/goal1_03_config_and_git.txt
+(nothing tracked is modified)
+
+$ git check-ignore -v .env
+.gitignore:2:.env	.env
+$ git ls-files .env
+(no output = .env is not tracked)
+
+$ git ls-files data/source | xargs sha256sum   (identical to the starter blobs)
+cd7617476ba9c29548941bafa453060f082707f60eb01335d023a9d46ba49212 *data/source/customers.csv
+f2de6cbd4ce9d3838401d3d6468accd40815c14bb6cb682f4340d897fd4338c3 *data/source/orders.csv
+18ba24bddd2a6f9e691ac720aae28e9c7b707dfb13bb6921a3ce2dbdfcb41047 *data/source/products.json
+
+$ git log --oneline --decorate -5
+90dd3f5 (HEAD -> goal1-reproducible-environment) docs: avoid quoting the training password literal in Goal 1 notes
+4547a61 feat: add reproducible pipeline environment
+4308009 chore: externalize secrets and ignore local-only files
+e9b2202 (main) chore: initialize DSS150P module 2 lab
+
+$ git branch
+* goal1-reproducible-environment
+  main

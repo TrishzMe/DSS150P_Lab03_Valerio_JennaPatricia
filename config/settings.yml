@@ -1,3 +1,6 @@
+# Non-secret pipeline defaults (committed).
+# Secrets and machine-specific values live in .env / environment variables;
+# src/config.py is the only module that merges the two.
 pipeline:
   source_dir: data/source
   raw_dir: data/raw
@@ -7,10 +10,22 @@ pipeline:
   benchmark_dir: data/benchmarks
   partition_dir: data/partitioned
   audit_timezone: UTC
+sources:
+  customers: customers.csv
+  products: products.json
+  orders: orders.csv
+database:
+  # Defaults only; POSTGRES_HOST/PORT/DB/USER in the environment take precedence.
+  host: localhost
+  port: 5432
+  dbname: dss150p
+  user: dss150p
+  connect_timeout_seconds: 5
 storage_benchmark:
   repeats: 5
   json_lines: true
   filter_status: DELIVERED
+  parquet_compression: snappy
   partition_columns: [order_year, order_month]
 quality:
   allowed_order_statuses: [PENDING, PAID, PACKED, SHIPPED, DELIVERED, CANCELLED]
