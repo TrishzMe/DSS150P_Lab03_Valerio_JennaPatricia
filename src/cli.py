@@ -1,12 +1,15 @@
+"""Command-line entry points. Thin composition only: parse arguments, call modules."""
 import argparse
-from src.config import PROJECT_ROOT, DB, SETTINGS
-from src.common.audit import new_run_id
+import sys
+
+from src.validate.environment import check_environment
 
 
 def main():
     parser = argparse.ArgumentParser(description='DSS150P modular pipeline')
     sub = parser.add_subparsers(dest='command', required=True)
-    sub.add_parser('validate-env')
+    v = sub.add_parser('validate-env', help='check interpreter, packages, config, sources, database')
+    v.add_argument('--require-db', action='store_true', help='fail if PostgreSQL is not reachable')
     sub.add_parser('extract')
     sub.add_parser('transform')
     sub.add_parser('load')
@@ -17,13 +20,15 @@ def main():
     args = parser.parse_args()
 
     if args.command == 'validate-env':
-        print('PROJECT_ROOT=', PROJECT_ROOT)
-        print('DB host/database=', DB['host'], DB['dbname'])
-        print('Configured source=', SETTINGS['pipeline']['source_dir'])
-        return
+        problems = check_environment(require_db=args.require_db)
+        for problem in problems:
+            print(f'ERROR           : {problem}', file=sys.stderr)
+        print('validate-env    :', 'FAILED' if problems else 'OK')
+        sys.exit(1 if problems else 0)
 
     # TODO: Wire the modular functions together. Keep orchestration logic thin.
     raise NotImplementedError(f'Wire command: {args.command}')
+
 
 if __name__ == '__main__':
     main()

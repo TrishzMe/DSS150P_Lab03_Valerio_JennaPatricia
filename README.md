@@ -1,35 +1,61 @@
-# DSS150P Laboratory 3 Starter Repository
+# DSS150P Laboratory Activity #3: Productionizing a Modular Data Pipeline
 
-This repository supports Module 2: Pipeline Construction, Storage, and Orchestration.
-It is intentionally incomplete. Students must implement the marked TODOs and document their decisions.
+**Student:** Jenna Patricia Valerio
+**Student Number:** 2024102708
+**Course:** DSS150P, Fundamentals of Data Engineering
+**Starter package:** [jrnmapanao/dss150p-lab03-starter](https://github.com/jrnmapanao/dss150p-lab03-starter)
 
-## Main progression
-- Goal 1: reproducible environment, modularization, Git, Docker, configuration
-- Goal 2: raw -> staging -> curated transformations; audit/error handling; rerun-safe loading
-- Goal 3: CSV/JSON/Parquet/PostgreSQL comparison; partitioning; selected-partition load
-- Goal 4: Apache Airflow DAG for extract -> transform -> load -> validate
+This repository turns the starter's ad hoc pipeline into a reproducible, modular, containerized
+pipeline for an e-commerce sales-order-line dataset.
 
-Start with `DSS150P_Laboratory_Activity_3.pdf`.
+## Prerequisites
 
-## Recommended commands
+Python 3.11+ (developed on 3.12.10), Git, Docker Desktop with Compose v2, and about 6 GB free disk.
+
+## 1. Setup (Goal 1)
+
 ```bash
-cp .env.example .env
+cp .env.example .env            # then replace POSTGRES_PASSWORD (URL-safe characters only)
 python -m venv .venv
-# activate .venv then:
+source .venv/bin/activate       # Windows PowerShell: .venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
 pip install -r requirements.txt
-python -m src.cli validate-env
+python -m src.cli validate-env  # works before PostgreSQL is up (prints a warning)
 ```
-The provided `.env.example` uses `POSTGRES_HOST=localhost` for host-side commands. Docker Compose overrides the application containers to use the service hostname `postgres`.
 
-Docker/PostgreSQL:
+PostgreSQL and the containerized pipeline:
+
 ```bash
+docker compose build pipeline
 docker compose up -d postgres
+docker compose ps                                              # dss150p-postgres (healthy)
 docker compose run --rm pipeline python -m src.cli validate-env
+docker exec -it dss150p-postgres psql -U dss150p -d dss150p -c "\dn"
+docker exec -it dss150p-postgres psql -U dss150p -d dss150p -c "\dt curated.*"
+python -m src.cli validate-env --require-db                    # host side, DB required
 ```
 
-Airflow in Goal 4:
-```bash
-docker compose -f docker-compose.yml -f docker-compose.airflow.yml up airflow-init
-docker compose -f docker-compose.yml -f docker-compose.airflow.yml up -d airflow-webserver airflow-scheduler
-```
-Airflow UI: http://localhost:8080 (training credentials: admin/admin; change if reused outside the lab).
+Stop with `docker compose stop` (keeps data) or `docker compose down` (removes containers, keeps
+the `pgdata` volume).
+
+## Configuration
+
+| File | Committed | Purpose |
+|---|---|---|
+| `config/settings.yml` | yes | non-secret defaults: directories, source file names, quality rules, benchmark settings, DB host/port/name defaults |
+| `.env.example` | yes | template for machine-specific values and secrets |
+| `.env` | **no** (git-ignored) | real password, host/port for this machine |
+| `src/config.py` | yes | the only module that reads YAML/environment |
+
+The same `.env` works on the host (`POSTGRES_HOST=localhost`) and in containers, because Compose
+overrides `POSTGRES_HOST=postgres` and `POSTGRES_PORT=5432` for the pipeline and Airflow services.
+See [docs/goal1_environment.md](docs/goal1_environment.md).
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `Set POSTGRES_PASSWORD in .env` from Compose | `cp .env.example .env` and set a password |
+| `container name "/dss150p-postgres" is already in use` | another lab's container uses the same name: `docker rm dss150p-postgres` (its named volume and data are kept) |
+| Port 5432 already in use | set `POSTGRES_PORT=5433` in `.env`; host commands follow it and containers keep using 5432 internally |
+| Password changed after first start | the volume keeps the original password: `docker compose down -v` to re-initialize (**deletes lab data**) |
