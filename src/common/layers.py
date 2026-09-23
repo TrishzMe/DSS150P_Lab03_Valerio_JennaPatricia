@@ -55,6 +55,11 @@ def read_json(path: Path) -> dict:
     return json.loads(Path(path).read_text(encoding='utf-8'))
 
 
+def partition_key(year: int, month: int) -> str:
+    """Hive-style key of a partitioned-Parquet folder, also used in audit.partition_loads."""
+    return f'order_year={int(year)}/order_month={int(month)}'
+
+
 def mark_latest(layer: str, run_id: str) -> None:
     write_json({'pipeline_run_id': run_id, 'folder': run_folder(run_id), 'marked_at_utc': utc_now_iso()},
                path_for(f'{layer}_dir') / LATEST_POINTER)

@@ -27,6 +27,8 @@ storage_benchmark:
   filter_status: DELIVERED
   parquet_compression: snappy
   partition_columns: [order_year, order_month]
+  # Month used by the partition-read experiment (same one the lab loads with load-partition).
+  sample_partition: {order_year: 2026, order_month: 1}
 quality:
   allowed_order_statuses: [PENDING, PAID, PACKED, SHIPPED, DELIVERED, CANCELLED]
   min_quantity: 1
