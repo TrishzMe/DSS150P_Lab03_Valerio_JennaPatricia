@@ -1,0 +1,18 @@
+-- SELECT order_id, customer_id, product_id, order_timestamp, customer_city, customer_tier, product_name, category, brand, quantity, unit_price, discount_pct, gross_amount, discount_amount, net_amount, status, source_updated_at, pipeline_run_id, processed_at_utc, record_hash FROM benchmark.sales_order_lines WHERE status = %s [DELIVERED], no index on status
+Seq Scan on sales_order_lines  (cost=0.00..2415.71 rows=8459 width=231) (actual time=0.008..6.789 rows=8355 loops=1)
+  Filter: (status = 'DELIVERED'::text)
+  Rows Removed by Filter: 41542
+  Buffers: shared hit=1792
+Planning Time: 0.046 ms
+Execution Time: 7.025 ms
+
+-- same query after CREATE INDEX ix_bench_sales_status ON benchmark.sales_order_lines (status)
+Bitmap Heap Scan on sales_order_lines  (cost=97.37..1994.35 rows=8398 width=231) (actual time=0.403..2.252 rows=8355 loops=1)
+  Recheck Cond: (status = 'DELIVERED'::text)
+  Heap Blocks: exact=1742
+  Buffers: shared hit=1751
+  ->  Bitmap Index Scan on ix_bench_sales_status  (cost=0.00..95.28 rows=8398 width=0) (actual time=0.258..0.258 rows=8355 loops=1)
+        Index Cond: (status = 'DELIVERED'::text)
+        Buffers: shared hit=9
+Planning Time: 0.059 ms
+Execution Time: 2.491 ms

@@ -5,6 +5,7 @@ non-empty result fails the stage.
 """
 import pandas as pd
 
+from src.common.layers import partition_key
 from src.config import QUALITY
 from src.transform.curated import CURATED_COLUMNS, business_hashes
 
@@ -129,7 +130,7 @@ def _validate_audit_trail(conn, run_id, year, month, expected_rows) -> list[str]
         errors.append(f'audit.stage_runs has {stuck} unfinished stage attempt(s) for {run_id}')
     if year is not None:
         row = conn.execute('SELECT row_count FROM audit.partition_loads WHERE partition_key = %s',
-                           (f'order_year={year}/order_month={month}',)).fetchone()
+                           (partition_key(year, month),)).fetchone()
         if row is None:
             errors.append(f'audit.partition_loads has no row for {year}-{month:02d}')
         elif row[0] != expected_rows:

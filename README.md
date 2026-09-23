@@ -67,6 +67,24 @@ completed run. A failed stage exits with code 1 and records `FAILED` in `audit.s
 Design, rules, measured counts, and decisions: [docs/goal2_pipeline.md](docs/goal2_pipeline.md).
 Column definitions: [docs/data_dictionary.csv](docs/data_dictionary.csv).
 
+## 3. Storage benchmark and partitions (Goal 3)
+
+```bash
+python -m src.cli benchmark --repeats 5          # CSV vs JSONL vs Parquet vs PostgreSQL, medians
+python -m src.cli load-partition --year 2026 --month 1
+python -m src.cli load-partition --year 2026 --month 1   # rerun: 0 written, load_count 2
+python -m src.cli validate --year 2026 --month 1
+docker exec -it dss150p-postgres psql -U dss150p -d dss150p -c "SELECT * FROM audit.partition_loads;"
+```
+
+- `transform` writes the partitioned dataset to `data/partitioned/order_year=YYYY/order_month=M/`
+  (21 partitions).
+- `load-partition` reads only the requested directory and UPSERTs it.
+- Benchmark results go to `data/benchmarks/` (`benchmark_results.csv`, `benchmark_runs.csv`,
+  `partition_read_results.csv`, `postgres_query_plans.txt`, `benchmark_environment.json`). The
+  materialized format files in `data/benchmarks/formats/` are not committed.
+- Interpretation and §9.5 answers: [docs/goal3_storage_benchmark.md](docs/goal3_storage_benchmark.md).
+
 ## Configuration
 
 | File | Committed | Purpose |
@@ -88,5 +106,6 @@ See [docs/goal1_environment.md](docs/goal1_environment.md).
 | `container name "/dss150p-postgres" is already in use` | another lab's container uses the same name: `docker rm dss150p-postgres` (its named volume and data are kept) |
 | Port 5432 already in use | set `POSTGRES_PORT=5433` in `.env`; host commands follow it and containers keep using 5432 internally |
 | Password changed after first start | the volume keeps the original password: `docker compose down -v` to re-initialize (**deletes lab data**) |
-| `relation "audit.stage_runs" does not exist` | the volume was initialized before `sql/init/02_audit_schema.sql` existed: `docker exec -i dss150p-postgres psql -U dss150p -d dss150p < sql/init/02_audit_schema.sql` (idempotent) |
+| `relation "audit.stage_runs" does not exist` or `column "load_count" ... does not exist` | the volume was initialized before `sql/init/02_audit_schema.sql`/`03_partition_audit.sql` existed: pipe each file into `docker exec -i dss150p-postgres psql -U dss150p -d dss150p < sql/init/<file>` (both are idempotent) |
+| `partition 2026-01 not found` | run `transform` (or `run-all`) first; it writes `data/partitioned/` |
 | `no curated output found` | run `python -m src.cli run-all` first; `load`/`validate` operate on an existing run |

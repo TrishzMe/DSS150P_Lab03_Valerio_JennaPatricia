@@ -1,0 +1,5 @@
+scenario,files_read,bytes_in_files_read,median_seconds,rows,runs_seconds
+single_file_read_all_then_filter,1,5467277,0.045449,2506,0.044990;0.047170;0.048445;0.045449;0.043799
+single_file_with_predicate,1,5467277,0.017525,2506,0.017368;0.016698;0.017885;0.018078;0.017525
+partitioned_dataset_with_partition_filter,1,326209,0.011488,2506,0.012242;0.011037;0.011488;0.011676;0.010770
+single_partition_directory,1,326209,0.006075,2506,0.005949;0.006750;0.006328;0.006075;0.005806

@@ -8,6 +8,7 @@ import time
 from src import pipeline
 from src.common.audit import new_run_id
 from src.common.errors import PipelineStageError, StageTerminated
+from src.config import BENCHMARK
 from src.validate.environment import check_environment
 
 log = logging.getLogger('src.cli')
@@ -25,8 +26,13 @@ def main():
         if name == 'validate':
             cmd.add_argument('--year', type=int, help='validate a selected-partition load')
             cmd.add_argument('--month', type=int, choices=range(1, 13), metavar='1-12')
-    b = sub.add_parser('benchmark'); b.add_argument('--repeats', type=int, default=5)
-    p = sub.add_parser('load-partition'); p.add_argument('--year', type=int, required=True); p.add_argument('--month', type=int, required=True)
+    b = sub.add_parser('benchmark', help='CSV vs JSONL vs Parquet vs PostgreSQL on the curated dataset')
+    b.add_argument('--repeats', type=int, default=BENCHMARK['repeats'])
+    b.add_argument('--run-id')
+    p = sub.add_parser('load-partition', help='UPSERT one order_year/order_month partition')
+    p.add_argument('--year', type=int, required=True)
+    p.add_argument('--month', type=int, required=True, choices=range(1, 13), metavar='1-12')
+    p.add_argument('--run-id')
     sub.add_parser('run-all', help='extract -> transform -> load -> validate under one run id')
     args = parser.parse_args()
 
@@ -55,9 +61,12 @@ def main():
                 parser.error('--year and --month must be given together')
             run_id = pipeline.resolve_run_id(args.run_id, 'curated')
             pipeline.run_stage('validate', run_id, pipeline.validate, args.year, args.month)
-        else:
-            # TODO Goal 3: benchmark and load-partition.
-            raise NotImplementedError(f'Wire command: {args.command}')
+        elif args.command == 'load-partition':
+            run_id = pipeline.resolve_run_id(args.run_id, 'curated')
+            pipeline.run_stage('load-partition', run_id, pipeline.load_partition, args.year, args.month)
+        elif args.command == 'benchmark':
+            run_id = pipeline.resolve_run_id(args.run_id, 'curated')
+            pipeline.run_stage('benchmark', run_id, pipeline.benchmark, args.repeats)
     except (PipelineStageError, FileNotFoundError) as exc:
         log.error('%s', exc)
         sys.exit(1)

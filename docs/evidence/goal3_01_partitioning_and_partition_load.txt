@@ -1,0 +1,206 @@
+# Goal 3 / Tasks C-D - partitioned Parquet, reading one partition, selected-partition load and rerun. Clean start (layers deleted, volume re-initialized); only extract + transform run first, so the warehouse is empty before the partition load.
+# Captured 2026-09-23T00:46:46Z on Windows 11 (Git Bash, .venv active); PostgreSQL 16 in Docker
+
+$ python -m src.cli extract
+2026-09-23T00:46:47Z INFO [src.pipeline] stage=extract run_id=run_20260923T004647Z_8d7ec271 status=STARTED
+2026-09-23T00:46:47Z INFO [src.pipeline] stage=extract run_id=run_20260923T004647Z_8d7ec271 status=SUCCESS in 0.14s: raw snapshot data/raw/run_id=run_20260923T004647Z_8d7ec271 (customers.csv=3003, products.json=601, orders.csv=50005 records)
+extract OK pipeline_run_id=run_20260923T004647Z_8d7ec271
+[exit code: 0]
+
+$ python -m src.cli transform
+2026-09-23T00:46:48Z INFO [src.pipeline] stage=transform run_id=run_20260923T004647Z_8d7ec271 status=STARTED
+2026-09-23T00:46:50Z INFO [src.pipeline] stage=transform run_id=run_20260923T004647Z_8d7ec271 status=SUCCESS in 2.59s: staging customers=3000 products=599 orders=49998; curated=49897 in 21 year/month partitions; quarantined=104
+transform OK pipeline_run_id=run_20260923T004647Z_8d7ec271
+[exit code: 0]
+
+## Partition directory hierarchy (data/partitioned)
+$ find data/partitioned -type d | sort
+data/partitioned
+data/partitioned/order_year=2025
+data/partitioned/order_year=2025/order_month=1
+data/partitioned/order_year=2025/order_month=10
+data/partitioned/order_year=2025/order_month=11
+data/partitioned/order_year=2025/order_month=12
+data/partitioned/order_year=2025/order_month=2
+data/partitioned/order_year=2025/order_month=3
+data/partitioned/order_year=2025/order_month=4
+data/partitioned/order_year=2025/order_month=5
+data/partitioned/order_year=2025/order_month=6
+data/partitioned/order_year=2025/order_month=7
+data/partitioned/order_year=2025/order_month=8
+data/partitioned/order_year=2025/order_month=9
+data/partitioned/order_year=2026
+data/partitioned/order_year=2026/order_month=1
+data/partitioned/order_year=2026/order_month=2
+data/partitioned/order_year=2026/order_month=3
+data/partitioned/order_year=2026/order_month=4
+data/partitioned/order_year=2026/order_month=5
+data/partitioned/order_year=2026/order_month=6
+data/partitioned/order_year=2026/order_month=7
+data/partitioned/order_year=2026/order_month=8
+data/partitioned/order_year=2026/order_month=9
+[exit code: 0]
+
+$ find data/partitioned -name '*.parquet' | sort | xargs ls -l | awk '{print $5, $9}'
+320947 data/partitioned/order_year=2025/order_month=1/part-0.parquet
+320478 data/partitioned/order_year=2025/order_month=10/part-0.parquet
+309946 data/partitioned/order_year=2025/order_month=11/part-0.parquet
+323271 data/partitioned/order_year=2025/order_month=12/part-0.parquet
+303808 data/partitioned/order_year=2025/order_month=2/part-0.parquet
+316029 data/partitioned/order_year=2025/order_month=3/part-0.parquet
+311251 data/partitioned/order_year=2025/order_month=4/part-0.parquet
+329853 data/partitioned/order_year=2025/order_month=5/part-0.parquet
+318115 data/partitioned/order_year=2025/order_month=6/part-0.parquet
+323045 data/partitioned/order_year=2025/order_month=7/part-0.parquet
+325142 data/partitioned/order_year=2025/order_month=8/part-0.parquet
+319170 data/partitioned/order_year=2025/order_month=9/part-0.parquet
+326209 data/partitioned/order_year=2026/order_month=1/part-0.parquet
+318205 data/partitioned/order_year=2026/order_month=2/part-0.parquet
+319101 data/partitioned/order_year=2026/order_month=3/part-0.parquet
+311816 data/partitioned/order_year=2026/order_month=4/part-0.parquet
+323617 data/partitioned/order_year=2026/order_month=5/part-0.parquet
+318768 data/partitioned/order_year=2026/order_month=6/part-0.parquet
+327665 data/partitioned/order_year=2026/order_month=7/part-0.parquet
+324850 data/partitioned/order_year=2026/order_month=8/part-0.parquet
+140690 data/partitioned/order_year=2026/order_month=9/part-0.parquet
+[exit code: 0]
+
+$ cat data/partitioned/_partitions.json
+{
+  "written_at_utc": "2026-09-23T00:46:50.758138+00:00",
+  "pipeline_run_id": [
+    "run_20260923T004647Z_8d7ec271"
+  ],
+  "rows": 49897,
+  "partitions": {
+    "order_year=2025/order_month=1": 2458,
+    "order_year=2025/order_month=2": 2283,
+    "order_year=2025/order_month=3": 2456,
+    "order_year=2025/order_month=4": 2410,
+    "order_year=2025/order_month=5": 2540,
+    "order_year=2025/order_month=6": 2467,
+    "order_year=2025/order_month=7": 2459,
+    "order_year=2025/order_month=8": 2510,
+    "order_year=2025/order_month=9": 2427,
+    "order_year=2025/order_month=10": 2451,
+    "order_year=2025/order_month=11": 2366,
+    "order_year=2025/order_month=12": 2492,
+    "order_year=2026/order_month=1": 2506,
+    "order_year=2026/order_month=2": 2286,
+    "order_year=2026/order_month=3": 2474,
+    "order_year=2026/order_month=4": 2379,
+    "order_year=2026/order_month=5": 2500,
+    "order_year=2026/order_month=6": 2448,
+    "order_year=2026/order_month=7": 2494,
+    "order_year=2026/order_month=8": 2540,
+    "order_year=2026/order_month=9": 951
+  }
+}
+[exit code: 0]
+
+## Read only the selected partition and verify its rows
+$ python -c "
+from src.benchmark.storage import read_partition
+from src.config import path_for
+import pandas as pd
+df = read_partition(path_for('partition_dir'), 2026, 1)
+ts = pd.to_datetime(df['order_timestamp'], utc=True)
+print('rows read:', len(df), '| files in that directory:', len(list((path_for('partition_dir') / 'order_year=2026' / 'order_month=1').glob('*.parquet'))))
+print('order_timestamp min/max:', ts.min(), '/', ts.max())
+print('distinct (year, month) derived from order_timestamp:', sorted(set(zip(ts.dt.year, ts.dt.month))))
+"
+rows read: 2506 | files in that directory: 1
+order_timestamp min/max: 2026-01-01 00:53:00+00:00 / 2026-01-31 23:24:00+00:00
+distinct (year, month) derived from order_timestamp: [(2026, 1)]
+[exit code: 0]
+
+## Selected-partition load into the empty warehouse, then the same load again
+$ docker exec dss150p-postgres psql -U dss150p -d dss150p -c "SELECT COUNT(*) AS rows_before FROM curated.sales_order_lines;"
+ rows_before 
+-------------
+           0
+(1 row)
+
+
+$ python -m src.cli load-partition --year 2026 --month 1
+2026-09-23T00:46:53Z INFO [src.pipeline] stage=load-partition run_id=run_20260923T004647Z_8d7ec271 status=STARTED
+2026-09-23T00:46:53Z INFO [src.load.postgres] run_id=run_20260923T004647Z_8d7ec271 partition order_year=2026/order_month=1 (2506 rows): inserted=2506 updated=0 unchanged=0
+2026-09-23T00:46:53Z INFO [src.pipeline] stage=load-partition run_id=run_20260923T004647Z_8d7ec271 status=SUCCESS in 0.25s: partition 2026-01: 2506 rows, 2506 written, 0 unchanged
+load-partition OK pipeline_run_id=run_20260923T004647Z_8d7ec271
+[exit code: 0]
+
+$ docker exec dss150p-postgres psql -U dss150p -d dss150p -c "SELECT * FROM audit.partition_loads;"
+         partition_key         |         loaded_at_utc         | row_count |        pipeline_run_id        | rows_inserted | rows_updated | rows_unchanged | load_count 
+-------------------------------+-------------------------------+-----------+-------------------------------+---------------+--------------+----------------+------------
+ order_year=2026/order_month=1 | 2026-09-23 00:46:53.562295+00 |      2506 | run_20260923T004647Z_8d7ec271 |          2506 |            0 |              0 |          1
+(1 row)
+
+
+$ python -m src.cli load-partition --year 2026 --month 1
+2026-09-23T00:46:54Z INFO [src.pipeline] stage=load-partition run_id=run_20260923T004647Z_8d7ec271 status=STARTED
+2026-09-23T00:46:55Z INFO [src.load.postgres] run_id=run_20260923T004647Z_8d7ec271 partition order_year=2026/order_month=1 (2506 rows): inserted=0 updated=0 unchanged=2506
+2026-09-23T00:46:55Z INFO [src.pipeline] stage=load-partition run_id=run_20260923T004647Z_8d7ec271 status=SUCCESS in 0.24s: partition 2026-01: 2506 rows, 0 written, 2506 unchanged
+load-partition OK pipeline_run_id=run_20260923T004647Z_8d7ec271
+[exit code: 0]
+
+$ docker exec dss150p-postgres psql -U dss150p -d dss150p -c "SELECT * FROM audit.partition_loads;"
+         partition_key         |         loaded_at_utc         | row_count |        pipeline_run_id        | rows_inserted | rows_updated | rows_unchanged | load_count 
+-------------------------------+-------------------------------+-----------+-------------------------------+---------------+--------------+----------------+------------
+ order_year=2026/order_month=1 | 2026-09-23 00:46:55.018281+00 |      2506 | run_20260923T004647Z_8d7ec271 |             0 |            0 |           2506 |          2
+(1 row)
+
+
+$ docker exec dss150p-postgres psql -U dss150p -d dss150p -c "SELECT COUNT(*) total, COUNT(DISTINCT order_id) distinct_orders, MIN(order_timestamp), MAX(order_timestamp) FROM curated.sales_order_lines;"
+ total | distinct_orders |          min           |          max           
+-------+-----------------+------------------------+------------------------
+  2506 |            2506 | 2026-01-01 00:53:00+00 | 2026-01-31 23:24:00+00
+(1 row)
+
+
+$ python -m src.cli validate --year 2026 --month 1
+2026-09-23T00:46:56Z INFO [src.pipeline] stage=validate run_id=run_20260923T004647Z_8d7ec271 status=STARTED
+2026-09-23T00:46:58Z INFO [src.pipeline] stage=validate run_id=run_20260923T004647Z_8d7ec271 status=SUCCESS in 1.76s: curated file and warehouse checks passed (partition 2026-01)
+validate OK pipeline_run_id=run_20260923T004647Z_8d7ec271
+[exit code: 0]
+
+## A later full load adds the other months without duplicating January
+$ python -m src.cli load
+2026-09-23T00:46:59Z INFO [src.pipeline] stage=load run_id=run_20260923T004647Z_8d7ec271 status=STARTED
+2026-09-23T00:47:02Z INFO [src.load.postgres] run_id=run_20260923T004647Z_8d7ec271 upsert into curated.sales_order_lines: inserted=47391 updated=0 unchanged=2506
+2026-09-23T00:47:02Z INFO [src.pipeline] stage=load run_id=run_20260923T004647Z_8d7ec271 status=SUCCESS in 2.84s: curated.sales_order_lines upsert: 47391 written, 2506 unchanged (record_hash match)
+load OK pipeline_run_id=run_20260923T004647Z_8d7ec271
+[exit code: 0]
+
+$ docker exec dss150p-postgres psql -U dss150p -d dss150p -c "SELECT COUNT(*) total, COUNT(DISTINCT order_id) distinct_orders FROM curated.sales_order_lines;"
+ total | distinct_orders 
+-------+-----------------
+ 49897 |           49897
+(1 row)
+
+
+$ docker exec dss150p-postgres psql -U dss150p -d dss150p -c "SELECT COUNT(*) AS jan_2026_rows FROM curated.sales_order_lines WHERE order_timestamp >= '2026-01-01' AND order_timestamp < '2026-02-01';"
+ jan_2026_rows 
+---------------
+          2506
+(1 row)
+
+
+$ python -m src.cli validate
+2026-09-23T00:47:03Z INFO [src.pipeline] stage=validate run_id=run_20260923T004647Z_8d7ec271 status=STARTED
+2026-09-23T00:47:08Z INFO [src.pipeline] stage=validate run_id=run_20260923T004647Z_8d7ec271 status=SUCCESS in 5.32s: curated file and warehouse checks passed (full dataset)
+validate OK pipeline_run_id=run_20260923T004647Z_8d7ec271
+[exit code: 0]
+
+$ docker exec dss150p-postgres psql -U dss150p -d dss150p -c "SELECT stage_run_id, stage, status, rows_in, rows_out, message FROM audit.stage_runs ORDER BY stage_run_id;"
+ stage_run_id |     stage      | status  | rows_in | rows_out |                                                           message                                                            
+--------------+----------------+---------+---------+----------+------------------------------------------------------------------------------------------------------------------------------
+            1 | extract        | SUCCESS |         |    53609 | raw snapshot data/raw/run_id=run_20260923T004647Z_8d7ec271 (customers.csv=3003, products.json=601, orders.csv=50005 records)
+            2 | transform      | SUCCESS |   53609 |    49897 | staging customers=3000 products=599 orders=49998; curated=49897 in 21 year/month partitions; quarantined=104
+            3 | load-partition | SUCCESS |    2506 |     2506 | partition 2026-01: 2506 rows, 2506 written, 0 unchanged
+            4 | load-partition | SUCCESS |    2506 |        0 | partition 2026-01: 2506 rows, 0 written, 2506 unchanged
+            5 | validate       | SUCCESS |   49897 |          | curated file and warehouse checks passed (partition 2026-01)
+            6 | load           | SUCCESS |   49897 |    47391 | curated.sales_order_lines upsert: 47391 written, 2506 unchanged (record_hash match)
+            7 | validate       | SUCCESS |   49897 |          | curated file and warehouse checks passed (full dataset)
+(7 rows)
+
+
