@@ -2,7 +2,7 @@
 
 Valerio, Jenna Patricia (2024102708), DSS150P
 
-## Part A: Reflection on the four themes (§12)
+## Part A: Reflection on the four themes (handout section 12)
 
 **Modularity.** The package has one module per responsibility:
 - `extract/` copies bytes;
@@ -51,7 +51,7 @@ That separation is what made the failure drill easy to reason about:
   `audit.stage_runs`);
 - the recovery was an ordinary Airflow "clear", not a special code path.
 
-## Part B: Technical questions (§15)
+## Part B: Technical questions (handout section 15)
 
 **1. Why is `record_hash` useful for rerun-safe loading, and which columns should not be included?**
 `order_id` alone prevents duplicate *rows*. `record_hash` answers the next question: has the row's

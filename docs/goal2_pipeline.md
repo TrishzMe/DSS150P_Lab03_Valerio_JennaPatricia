@@ -45,7 +45,7 @@ Each raw record therefore lands in exactly one bucket: staged, quarantined, or s
 | products | key `product_id`; nested `category` flattened to `category_name` and `category_department`; `unit_price` numeric. **Negative** → `negative_unit_price`; missing or non-numeric → `invalid_unit_price`. |
 | orders | key `order_id`; `order_timestamp`/`updated_at` → UTC; `quantity` must be a whole number (`invalid_quantity`) within `min_quantity..max_quantity` = 1..20 (`quantity_out_of_range`); `status` trimmed, upper-cased, and must be in `allowed_order_statuses` (`invalid_status`); `unit_price` present and ≥ 0; `discount_pct` in 0..1; `customer_id`/`product_id` present. |
 
-**Why these rules and no others.** Each rule is either stated in the lab (§8.3) or needed to
+**Why these rules and no others.** Each rule is either stated in the handout (section 8.3) or needed to
 compute a correct row, for example a discount above 1 would make `net_amount` negative. I added
 no rules the data cannot justify. There is no allowed-values check on `customer_tier` and no email
 format check, because nothing in the brief defines them. The 28 inactive products (`active = false`) are kept, and so are the 2,386 curated order lines that
@@ -68,7 +68,7 @@ reference them, because no rule says an inactive product cannot appear in orders
   until the product is fixed at the source. Because quarantine keeps the full record, those orders
   can be reprocessed; they are not lost. The alternative, loading them with no product attributes,
   would have created 99 analysis rows with blank category and brand.
-- **Monetary measures** (§8.4), computed in integer cents so the values are exact:
+- **Monetary measures** (handout section 8.4), computed in integer cents so the values are exact:
   - `gross_amount = quantity × unit_price`
   - `discount_amount = gross_amount × discount_pct`, rounded half-up to the cent
   - `net_amount = gross_amount − discount_amount`

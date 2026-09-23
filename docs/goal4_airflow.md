@@ -21,7 +21,7 @@ a headless Edge browser logged in to the local UI (see the table at the end).
 | Retries | `retries=2`, `retry_delay=1 min` (3 attempts in total) | 1 minute keeps the lab demonstration short. In production I would use a longer delay with `retry_exponential_backoff`, because the realistic transient failures (source not landed yet, database restarting) need minutes to clear. |
 | Timeout | `execution_timeout` 5 min for extract, 10 min for the other tasks; `dagrun_timeout=1h` | A normal run takes about 20 s (each task 2–7 s), so these bounds are generous but stop a hung task. On timeout Airflow sends SIGTERM; the CLI turns SIGTERM into a `StageTerminated` error, so the attempt is still recorded as `FAILED` in `audit.stage_runs`. |
 | Failure handling | `on_retry_callback` and `on_failure_callback` log a JSON record (dag, task, run id, try number, max tries, params, exception, log URL) into the task log and append it to `logs/dss150p_task_events.jsonl` | a structured record that survives the UI; the pipeline also writes its own `FAILED` rows in `audit.stage_runs` |
-| Catch-up | `catchup=False`, `max_active_runs=1` | Every run already reprocesses the *entire* current snapshot, so replaying missed days would load the same data repeatedly (§6). One active run at a time, because runs share `data/partitioned/` and the warehouse table. |
+| Catch-up | `catchup=False`, `max_active_runs=1` | Every run already reprocesses the *entire* current snapshot, so replaying missed days would load the same data repeatedly (see section 4 below). One active run at a time, because runs share `data/partitioned/` and the warehouse table. |
 | Business-logic separation | every task is a `BashOperator` running `python -m src.cli <command>` from the mounted project; the DAG imports nothing from `src/` | The rules are testable without Airflow (`pytest`) and runnable without it (`run-all`). The DAG only decides when, in what order, with which parameters, and what happens on failure. |
 | Run identity | `env={'PIPELINE_RUN_ID': '{{ run_id }}', 'PIPELINE_TASK_ATTEMPT': '{{ ti.try_number }}'}` on every task | All four tasks use the same `pipeline_run_id` and the same run folders. The attempt number lands in `audit.stage_runs.attempt`. |
 
@@ -97,7 +97,7 @@ would leave the old warehouse row in place. That is acceptable for these full sn
 ever add or change orders. A real feed with deletions would need tombstones or a
 snapshot-difference delete inside the same transaction.
 
-## 4. Backfill reasoning (optional challenge §10.6)
+## 4. Backfill reasoning (optional challenge, handout section 10.6)
 
 - **Data interval.** With `0 2 * * *` (Manila), the run with logical date `2026-09-21T18:00Z` covers
   the interval `[2026-09-21T18:00Z, 2026-09-22T18:00Z)` and starts at the *end* of that interval.

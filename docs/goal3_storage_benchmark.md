@@ -146,7 +146,7 @@ request.
 The partition load uses the same `order_id` UPSERT as the full load, so the path used to load a row
 cannot create a duplicate.
 
-## 6. Analysis questions (§9.5)
+## 6. Analysis questions (handout section 9.5)
 
 **1. Which format was smallest, and why?**
 Parquet with snappy: 5.47 MB, versus CSV 14.95 MB (2.7×), PostgreSQL 16.3 MB (3.0×), and JSON Lines

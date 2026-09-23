@@ -11,16 +11,16 @@ year/month, and is orchestrated by Apache Airflow.
 
 ## Where to find each deliverable
 
-| Deliverable (§12) | Location |
+| Deliverable (handout section 12) | Location |
 |---|---|
 | Goal 1: environment, versions, config separation | [docs/goal1_environment.md](docs/goal1_environment.md), `docs/evidence/goal1_*` |
 | Goal 2: layers, rules, counts, audit columns, rerun safety, error handling | [docs/goal2_pipeline.md](docs/goal2_pipeline.md), [docs/data_dictionary.csv](docs/data_dictionary.csv), `docs/evidence/goal2_*` |
 | Goal 3: benchmark results and interpretation, partitions, partition load | [docs/goal3_storage_benchmark.md](docs/goal3_storage_benchmark.md), [data/benchmarks/](data/benchmarks/), `docs/evidence/goal3_*` |
 | Goal 4: DAG, full/partition/failure/recovery runs | [docs/goal4_airflow.md](docs/goal4_airflow.md), `docs/evidence/goal4_*`, [docs/evidence/screenshots/](docs/evidence/screenshots/) |
 | Filled run-evidence template | [docs/run_evidence.md](docs/run_evidence.md) |
-| Technical reflection and §15 answers | [docs/technical_reflection.md](docs/technical_reflection.md) |
-| Integrated acceptance test (§11), from a fresh clone | [docs/evidence/integrated_acceptance_test.txt](docs/evidence/integrated_acceptance_test.txt) |
-| AI use disclosure (§16) | [docs/ai_use_disclosure.md](docs/ai_use_disclosure.md) |
+| Technical reflection and section 15 answers | [docs/technical_reflection.md](docs/technical_reflection.md) |
+| Integrated acceptance test (section 11), from a fresh clone | [docs/evidence/integrated_acceptance_test.txt](docs/evidence/integrated_acceptance_test.txt) |
+| AI use disclosure (section 16) | [docs/ai_use_disclosure.md](docs/ai_use_disclosure.md) |
 
 ## Repository layout
 
@@ -121,7 +121,7 @@ docker exec -it dss150p-postgres psql -U dss150p -d dss150p -c "SELECT * FROM au
 - Benchmark results go to `data/benchmarks/` (`benchmark_results.csv`, `benchmark_runs.csv`,
   `partition_read_results.csv`, `postgres_query_plans.txt`, `benchmark_environment.json`). The
   materialized format files in `data/benchmarks/formats/` are not committed.
-- Interpretation and §9.5 answers: [docs/goal3_storage_benchmark.md](docs/goal3_storage_benchmark.md).
+- Interpretation and section 9.5 answers: [docs/goal3_storage_benchmark.md](docs/goal3_storage_benchmark.md).
 
 ## 4. Airflow orchestration (Goal 4)
 
@@ -134,7 +134,7 @@ docker exec dss150p-airflow-scheduler airflow dags unpause dss150p_sales_pipelin
 ```
 
 `airflow-webserver` and `airflow-scheduler` depend on `airflow-init` completing successfully, so the
-second `up` command also works on its own (the §11 sequence): it migrates the metadata DB first.
+second `up` command also works on its own (the section 11 sequence): it migrates the metadata DB first.
 
 UI: http://localhost:8080. Log in with the `AIRFLOW_ADMIN_USER` / `AIRFLOW_ADMIN_PASSWORD` you set in
 your `.env`. `airflow-init` creates that account on its first run, so set the password before starting
@@ -160,7 +160,7 @@ Configuration rationale, run evidence, rerun safety, and backfill reasoning:
 [docs/goal4_airflow.md](docs/goal4_airflow.md). Task logs are written to `logs/` (not committed),
 and retry/failure callback events to `logs/dss150p_task_events.jsonl`.
 
-## Integrated technical acceptance test (§11)
+## Integrated technical acceptance test (handout section 11)
 
 From a fresh clone (after `cp .env.example .env` and the venv setup above):
 
@@ -212,7 +212,7 @@ See [docs/goal1_environment.md](docs/goal1_environment.md).
 | Airflow cannot log in to its metadata DB | the `airflow` database is created by `sql/init/00_create_databases.sql` only on a fresh volume; re-initialize with `docker compose down -v` (**deletes lab data**) |
 | `no curated output found` | run `python -m src.cli run-all` first; `load`/`validate` operate on an existing run |
 
-## Submission checklist (§17)
+## Submission checklist (handout section 17)
 
 | Item | Status / evidence |
 |---|---|

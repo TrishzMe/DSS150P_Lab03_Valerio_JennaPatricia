@@ -3,7 +3,7 @@
 Course: DSS150P, Laboratory Activity #3
 Student: Valerio, Jenna Patricia (2024102708)
 
-In line with §16 of the laboratory handout, I disclose that I used an AI assistant (Claude, by
+In line with section 16 of the laboratory handout, I disclose that I used an AI assistant (Claude, by
 Anthropic, through Claude Code) while completing this laboratory. The assistance is also visible in
 the commit history (`Co-Authored-By` lines).
 
@@ -29,12 +29,12 @@ the commit history (`Co-Authored-By` lines).
   and keep the code clean and modular.
 - I provided the machine the work ran on (Python, Docker Desktop, and the PostgreSQL and Airflow
   containers), so every benchmark measurement and every run in the evidence comes from my
-  environment, as §9.2 requires.
+  environment, as section 9.2 of the handout requires.
 - I reviewed the results as the work progressed and required fixes where something did not meet the
   laboratory instructions. For example, I had a usable Airflow password removed from `.env.example`
   and the README so that no credential is visible in any committed file.
 - I checked how the Airflow screenshots were captured and whether the evidence formats meet what the
-  handout asks for in §12.
+  handout asks for in section 12.
 - I created the GitHub repository for the submission, and reviewed and revised the wording of this
   disclosure.
 - I remain responsible for this submission, as the course policy requires.
