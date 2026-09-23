@@ -55,14 +55,14 @@ resolve the same set. `pip freeze` after a from-scratch rebuild matches the file
   `db_params()`. Business modules import these and never call `os.getenv` themselves.
 - The password has **no default anywhere**. `db_params()` raises a `ConfigError` if it is missing, and
   both Compose files use `${POSTGRES_PASSWORD:?...}`, so Compose refuses to start without `.env`
-  instead of silently using a known password. The starter's `change_me` fallbacks and the hard-coded
+  instead of silently using a known password. The starter's training-password fallbacks and the hard-coded
   `admin/admin` Airflow login were removed from the YAML files.
 - **Host vs. container.** The same `.env` says `POSTGRES_HOST=localhost` for host-side commands, and
   Compose overrides it to the service name `postgres` (and the internal port `5432`) for the pipeline
   and Airflow containers. No module hard-codes either hostname.
 - `PIPELINE_<KEY>` environment variables (for example `PIPELINE_SOURCE_DIR`) can override a directory
   from a non-committed local configuration without editing committed files.
-- Secret scan: `git grep -n "change_me" -- ":(exclude).env.example"` returns nothing (goal1_03 transcript).
+- Secret scan: `git grep` for the `.env.example` training password (excluding `.env.example`) returns nothing (goal1_03 transcript).
 
 ## 4. Modular structure (Task B)
 
