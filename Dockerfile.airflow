@@ -1,4 +1,8 @@
 ARG AIRFLOW_IMAGE_NAME=apache/airflow:2.10.5-python3.11
 FROM ${AIRFLOW_IMAGE_NAME}
+# The google and snowflake providers are not used by this DAG and pin pandas<2.2.
+# Removing them lets Airflow run the pipeline with the same pandas as requirements.txt
+# without dependency conflicts.
+RUN pip uninstall -y apache-airflow-providers-google apache-airflow-providers-snowflake
 COPY requirements-airflow.txt /requirements-airflow.txt
 RUN pip install --no-cache-dir -r /requirements-airflow.txt

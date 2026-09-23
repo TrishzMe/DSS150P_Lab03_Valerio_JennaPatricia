@@ -11,6 +11,8 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
     # Credentials are interpolated from .env; no password is stored in this file.
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-dss150p}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres/airflow
+    # REST API accepts the UI login (basic auth) so run states/try numbers can be queried with curl.
+    AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session
     PYTHONPATH: /opt/airflow/project
     POSTGRES_HOST: postgres
     POSTGRES_PORT: "5432"

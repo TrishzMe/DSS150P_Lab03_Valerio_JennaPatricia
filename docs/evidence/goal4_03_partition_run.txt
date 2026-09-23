@@ -1,0 +1,89 @@
+# Goal 4 / Task D - parameterized run: run_mode=partition, year=2025, month=12
+# Captured 2026-09-23T01:10:48Z on Windows 11 (Git Bash, .venv active); PostgreSQL 16 in Docker
+
+$ docker exec dss150p-postgres psql -U dss150p -d dss150p -c "SELECT partition_key, loaded_at_utc, row_count, pipeline_run_id, load_count FROM audit.partition_loads ORDER BY partition_key;"
+         partition_key         |         loaded_at_utc         | row_count |        pipeline_run_id        | load_count 
+-------------------------------+-------------------------------+-----------+-------------------------------+------------
+ order_year=2026/order_month=1 | 2026-09-23 00:46:55.018281+00 |      2506 | run_20260923T004647Z_8d7ec271 |          2
+(1 row)
+
+
+$ docker exec dss150p-airflow-scheduler airflow dags trigger dss150p_sales_pipeline -c '{"run_mode": "partition", "year": 2025, "month": 12}' -o json
+created dag_run_id: manual__2026-09-23T01:10:52+00:00
+
+$ (poll airflow dags list-runs until the run is finished)
+dag run manual__2026-09-23T01:10:52+00:00 finished: success
+
+$ curl -u $AIRFLOW_ADMIN_USER:*** .../dagRuns/<run>/taskInstances   (tabulated)
+task_id    state            try max_tries start_date (UTC)            end_date (UTC)              duration_s
+extract    success            1         2 2026-09-23T01:10:53.217755  2026-09-23T01:10:56.548910        3.33
+transform  success            1         2 2026-09-23T01:10:57.153137  2026-09-23T01:11:01.633507        4.48
+load       success            1         2 2026-09-23T01:11:02.209439  2026-09-23T01:11:03.970428        1.76
+validate   success            1         2 2026-09-23T01:11:05.110104  2026-09-23T01:11:08.356888        3.25
+
+$ curl -u $AIRFLOW_ADMIN_USER:*** .../dagRuns/<run>   (conf as received by Airflow)
+{'dag_run_id': 'manual__2026-09-23T01:10:52+00:00', 'run_type': 'manual', 'state': 'success', 'conf': {'month': 12, 'run_mode': 'partition', 'year': 2025}, 'start_date': '2026-09-23T01:10:52.893692+00:00', 'end_date': '2026-09-23T01:11:08.953579+00:00'}
+
+## The load and validate tasks rendered the partition commands from the DAG params
+$ docker exec dss150p-airflow-scheduler airflow tasks render dss150p_sales_pipeline load 'manual__2026-09-23T01:10:52+00:00' 2>/dev/null | grep -A2 -E 'property: (bash_command|env)'
+# property: bash_command
+# ----------------------------------------------------------
+cd /opt/airflow/project && python -m src.cli load-partition --year 2025 --month 12
+# property: env
+# ----------------------------------------------------------
+{'PIPELINE_RUN_ID': 'manual__2026-09-23T01:10:52+00:00', 'PIPELINE_TASK_ATTEMPT': '1'}
+[exit code: 0]
+
+$ grep -E 'Starting attempt|Running command|INFO \[src|OK pipeline_run_id|exited with return code' "logs/dag_id=dss150p_sales_pipeline/run_id=manual__2026-09-23T01:10:52+00:00/task_id=load/attempt=1.log" | cut -c1-260
+[2026-09-23T01:11:02.217+0000] {taskinstance.py:2867} INFO - Starting attempt 1 of 3
+[2026-09-23T01:11:02.404+0000] {subprocess.py:88} INFO - Running command: ['/usr/bin/bash', '-c', 'cd /opt/airflow/project && python -m src.cli load-partition --year 2025 --month 12']
+[2026-09-23T01:11:03.600+0000] {subprocess.py:106} INFO - 2026-09-23T01:11:03Z INFO [src.pipeline] stage=load-partition run_id=manual__2026-09-23T01:10:52+00:00 status=STARTED
+[2026-09-23T01:11:03.814+0000] {subprocess.py:106} INFO - 2026-09-23T01:11:03Z INFO [src.load.postgres] run_id=manual__2026-09-23T01:10:52+00:00 partition order_year=2025/order_month=12 (2492 rows): inserted=0 updated=0 unchanged=2492
+[2026-09-23T01:11:03.826+0000] {subprocess.py:106} INFO - 2026-09-23T01:11:03Z INFO [src.pipeline] stage=load-partition run_id=manual__2026-09-23T01:10:52+00:00 status=SUCCESS in 0.19s: partition 2025-12: 2492 rows, 0 written, 2492 unchanged
+[2026-09-23T01:11:03.827+0000] {subprocess.py:106} INFO - load-partition OK pipeline_run_id=manual__2026-09-23T01:10:52+00:00
+[2026-09-23T01:11:03.934+0000] {subprocess.py:110} INFO - Command exited with return code 0
+[2026-09-23T01:11:04.018+0000] {local_task_job_runner.py:266} INFO - Task exited with return code 0
+[exit code: 0]
+
+$ grep -E 'Starting attempt|Running command|INFO \[src|OK pipeline_run_id|exited with return code' "logs/dag_id=dss150p_sales_pipeline/run_id=manual__2026-09-23T01:10:52+00:00/task_id=validate/attempt=1.log" | cut -c1-260
+[2026-09-23T01:11:05.119+0000] {taskinstance.py:2867} INFO - Starting attempt 1 of 3
+[2026-09-23T01:11:05.309+0000] {subprocess.py:88} INFO - Running command: ['/usr/bin/bash', '-c', 'cd /opt/airflow/project && python -m src.cli validate --year 2025 --month 12']
+[2026-09-23T01:11:06.482+0000] {subprocess.py:106} INFO - 2026-09-23T01:11:06Z INFO [src.pipeline] stage=validate run_id=manual__2026-09-23T01:10:52+00:00 status=STARTED
+[2026-09-23T01:11:08.221+0000] {subprocess.py:106} INFO - 2026-09-23T01:11:08Z INFO [src.pipeline] stage=validate run_id=manual__2026-09-23T01:10:52+00:00 status=SUCCESS in 1.71s: curated file and warehouse checks passed (partition 2025-12)
+[2026-09-23T01:11:08.222+0000] {subprocess.py:106} INFO - validate OK pipeline_run_id=manual__2026-09-23T01:10:52+00:00
+[2026-09-23T01:11:08.324+0000] {subprocess.py:110} INFO - Command exited with return code 0
+[2026-09-23T01:11:08.407+0000] {local_task_job_runner.py:266} INFO - Task exited with return code 0
+[exit code: 0]
+
+$ docker exec dss150p-postgres psql -U dss150p -d dss150p -c "SELECT partition_key, loaded_at_utc, row_count, pipeline_run_id, rows_inserted, rows_updated, rows_unchanged, load_count FROM audit.partition_loads ORDER BY partition_key;"
+         partition_key          |         loaded_at_utc         | row_count |          pipeline_run_id          | rows_inserted | rows_updated | rows_unchanged | load_count 
+--------------------------------+-------------------------------+-----------+-----------------------------------+---------------+--------------+----------------+------------
+ order_year=2025/order_month=12 | 2026-09-23 01:11:03.81094+00  |      2492 | manual__2026-09-23T01:10:52+00:00 |             0 |            0 |           2492 |          1
+ order_year=2026/order_month=1  | 2026-09-23 00:46:55.018281+00 |      2506 | run_20260923T004647Z_8d7ec271     |             0 |            0 |           2506 |          2
+(2 rows)
+
+
+$ docker exec dss150p-postgres psql -U dss150p -d dss150p -c "SELECT stage_run_id, pipeline_run_id, stage, attempt, status, rows_in, rows_out, message FROM audit.stage_runs WHERE pipeline_run_id = 'manual__2026-09-23T01:10:52+00:00' ORDER BY stage_run_id;"
+ stage_run_id |          pipeline_run_id          |     stage      | attempt | status  | rows_in | rows_out |                                                             message                                                              
+--------------+-----------------------------------+----------------+---------+---------+---------+----------+----------------------------------------------------------------------------------------------------------------------------------
+           21 | manual__2026-09-23T01:10:52+00:00 | extract        |       1 | SUCCESS |         |    53609 | raw snapshot data/raw/run_id=manual__2026-09-23T01_10_52_00_00 (customers.csv=3003, products.json=601, orders.csv=50005 records)
+           22 | manual__2026-09-23T01:10:52+00:00 | transform      |       1 | SUCCESS |   53609 |    49897 | staging customers=3000 products=599 orders=49998; curated=49897 in 21 year/month partitions; quarantined=104
+           23 | manual__2026-09-23T01:10:52+00:00 | load-partition |       1 | SUCCESS |    2492 |        0 | partition 2025-12: 2492 rows, 0 written, 2492 unchanged
+           24 | manual__2026-09-23T01:10:52+00:00 | validate       |       1 | SUCCESS |   49897 |          | curated file and warehouse checks passed (partition 2025-12)
+(4 rows)
+
+
+$ docker exec dss150p-postgres psql -U dss150p -d dss150p -c "SELECT COUNT(*) AS dec_2025_rows, COUNT(DISTINCT order_id) AS distinct_orders FROM curated.sales_order_lines WHERE order_timestamp >= '2025-12-01' AND order_timestamp < '2026-01-01';"
+ dec_2025_rows | distinct_orders 
+---------------+-----------------
+          2492 |            2492
+(1 row)
+
+
+$ docker exec dss150p-postgres psql -U dss150p -d dss150p -c "SELECT COUNT(*) total, COUNT(DISTINCT order_id) distinct_orders FROM curated.sales_order_lines;"
+ total | distinct_orders 
+-------+-----------------
+ 49897 |           49897
+(1 row)
+
+
