@@ -4,8 +4,7 @@ Course: DSS150P, Laboratory Activity #3
 Student: Valerio, Jenna Patricia (2024102708)
 
 In line with section 16 of the laboratory handout, I disclose that I used an AI assistant (Claude, by
-Anthropic, through Claude Code) while completing this laboratory. The assistance is also visible in
-the commit history (`Co-Authored-By` lines).
+Anthropic, through Claude Code) while completing this laboratory.
 
 ## How AI was used
 

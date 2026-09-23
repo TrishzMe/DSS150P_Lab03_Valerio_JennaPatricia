@@ -231,5 +231,4 @@ See [docs/goal1_environment.md](docs/goal1_environment.md).
 
 I used Claude (Anthropic) through Claude Code for profiling, implementation, debugging, capturing
 evidence, and drafting documentation. What it did and what I verified are described in
-[docs/ai_use_disclosure.md](docs/ai_use_disclosure.md). Commits made with its help carry a
-`Co-Authored-By` line.
+[docs/ai_use_disclosure.md](docs/ai_use_disclosure.md).
