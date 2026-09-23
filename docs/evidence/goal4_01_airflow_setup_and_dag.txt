@@ -1,0 +1,107 @@
+# Goal 4 / Tasks A-B - Airflow initialized with the lab's Compose files; DAG parsed and configured
+# Captured 2026-09-23T00:58:20Z on Windows 11 (Git Bash, .venv active); PostgreSQL 16 in Docker
+
+$ docker compose -f docker-compose.yml -f docker-compose.airflow.yml up airflow-init 2>&1 | grep -v UserWarning | tail -2
+dss150p-airflow-init  | admin already exist in the db
+[Kdss150p-airflow-init exited with code 0
+[exit code: 0]
+
+$ docker compose -f docker-compose.yml -f docker-compose.airflow.yml up -d airflow-webserver airflow-scheduler
+ Container dss150p-airflow-webserver Running 
+ Container dss150p-airflow-scheduler Running 
+ Container dss150p-postgres Running 
+ Container dss150p-postgres Waiting 
+ Container dss150p-postgres Waiting 
+ Container dss150p-postgres Healthy 
+ Container dss150p-postgres Healthy 
+[exit code: 0]
+
+$ docker compose -f docker-compose.yml -f docker-compose.airflow.yml ps
+NAME                        IMAGE                                                   COMMAND                  SERVICE             CREATED          STATUS                    PORTS
+dss150p-airflow-scheduler   dss150p_lab03_valerio_jennapatricia-airflow-scheduler   "/usr/bin/dumb-init …"   airflow-scheduler   4 minutes ago    Up 4 minutes              8080/tcp
+dss150p-airflow-webserver   dss150p_lab03_valerio_jennapatricia-airflow-webserver   "/usr/bin/dumb-init …"   airflow-webserver   4 minutes ago    Up 4 minutes (healthy)    0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
+dss150p-postgres            postgres:16                                             "docker-entrypoint.s…"   postgres            12 minutes ago   Up 12 minutes (healthy)   0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp
+[exit code: 0]
+
+$ curl -s http://localhost:8080/health
+{"dag_processor": {"latest_dag_processor_heartbeat": null, "status": null}, "metadatabase": {"status": "healthy"}, "scheduler": {"latest_scheduler_heartbeat": "2026-09-23T00:58:28.611739+00:00", "status": "healthy"}, "triggerer": {"latest_triggerer_heartbeat": null, "status": null}}[exit code: 0]
+
+$ docker exec dss150p-airflow-scheduler airflow version
+2.10.5
+[exit code: 0]
+
+$ docker exec dss150p-airflow-scheduler python -m pip check
+No broken requirements found.
+[exit code: 0]
+
+$ docker exec dss150p-airflow-scheduler python -c "import pandas, pyarrow, psycopg; print('pandas', pandas.__version__, '| pyarrow', pyarrow.__version__, '| psycopg', psycopg.__version__)"
+pandas 2.2.3 | pyarrow 17.0.0 | psycopg 3.2.3
+[exit code: 0]
+
+$ docker exec dss150p-airflow-scheduler airflow dags list-import-errors
+No data found
+[exit code: 0]
+
+$ docker exec dss150p-airflow-scheduler airflow dags list
+dag_id                 | fileloc                               | owners  | is_paused
+=======================+=======================================+=========+==========
+dss150p_sales_pipeline | /opt/airflow/dags/dss150p_pipeline.py | dss150p | False    
+                                                                                    
+[exit code: 0]
+
+$ docker exec dss150p-airflow-scheduler airflow tasks list dss150p_sales_pipeline --tree
+<Task(BashOperator): extract>
+    <Task(BashOperator): transform>
+        <Task(BashOperator): load>
+            <Task(BashOperator): validate>
+[exit code: 0]
+
+$ docker exec dss150p-airflow-scheduler python -c "
+from airflow.models import DagBag
+dag = DagBag('/opt/airflow/dags', include_examples=False).get_dag('dss150p_sales_pipeline')
+print('schedule:', dag.schedule_interval, '| timezone:', dag.timezone.name, '| catchup:', dag.catchup, '| max_active_runs:', dag.max_active_runs, '| dagrun_timeout:', dag.dagrun_timeout)
+print('params (defaults):', dag.params.dump())
+print('params (schema):', {k: dag.params.get_param(k).schema for k in dag.params})
+for t in dag.tasks:
+    print(f'{t.task_id:<10} upstream={sorted(t.upstream_task_ids)} retries={t.retries} retry_delay={t.retry_delay} execution_timeout={t.execution_timeout} callbacks=({t.on_retry_callback.__name__}, {t.on_failure_callback.__name__})')
+    print(f'           bash_command={t.bash_command!r}')
+print('env passed to every task:', dag.tasks[0].env)
+" 2>&1 | grep -v 'Filling up the DagBag'
+schedule: 0 2 * * * | timezone: Asia/Manila | catchup: False | max_active_runs: 1 | dagrun_timeout: 1:00:00
+params (defaults): {'run_mode': 'full', 'year': 2026, 'month': 1}
+params (schema): {'run_mode': {'type': 'string', 'enum': ['full', 'partition']}, 'year': {'type': 'integer', 'minimum': 2000, 'maximum': 2100}, 'month': {'type': 'integer', 'minimum': 1, 'maximum': 12}}
+extract    upstream=[] retries=2 retry_delay=0:01:00 execution_timeout=0:05:00 callbacks=(on_task_retry, on_task_failure)
+           bash_command='cd /opt/airflow/project && python -m src.cli extract'
+transform  upstream=['extract'] retries=2 retry_delay=0:01:00 execution_timeout=0:10:00 callbacks=(on_task_retry, on_task_failure)
+           bash_command='cd /opt/airflow/project && python -m src.cli transform'
+load       upstream=['transform'] retries=2 retry_delay=0:01:00 execution_timeout=0:10:00 callbacks=(on_task_retry, on_task_failure)
+           bash_command="cd /opt/airflow/project && python -m src.cli {% if params.run_mode == 'partition' %}load-partition --year {{ params.year }} --month {{ params.month }}{% else %}load{% endif %}"
+validate   upstream=['load'] retries=2 retry_delay=0:01:00 execution_timeout=0:10:00 callbacks=(on_task_retry, on_task_failure)
+           bash_command="cd /opt/airflow/project && python -m src.cli validate{% if params.run_mode == 'partition' %} --year {{ params.year }} --month {{ params.month }}{% endif %}"
+env passed to every task: {'PIPELINE_RUN_ID': '{{ run_id }}', 'PIPELINE_TASK_ATTEMPT': '{{ ti.try_number }}'}
+[exit code: 0]
+
+## Scheduling: logical date of the next scheduled run (18:00 UTC = 02:00 Asia/Manila)
+$ docker exec dss150p-airflow-scheduler airflow dags next-execution dss150p_sales_pipeline
+[2026-09-23T00:58:51.051+0000] {dagbag.py:588} INFO - Filling up the DagBag from /opt/airflow/dags
+2026-09-22T18:00:00+00:00
+[exit code: 0]
+
+## First scheduled run (created by the scheduler when the DAG was unpaused; catchup=False -> only the latest interval)
+$ docker exec dss150p-airflow-scheduler airflow dags list-runs -d dss150p_sales_pipeline
+dag_id                 | run_id                               | state   | execution_date            | start_date                       | end_date                        
+=======================+======================================+=========+===========================+==================================+=================================
+dss150p_sales_pipeline | scheduled__2026-09-21T18:00:00+00:00 | success | 2026-09-21T18:00:00+00:00 | 2026-09-23T00:54:48.080155+00:00 | 2026-09-23T00:55:08.209905+00:00
+                                                                                                                                                                         
+[exit code: 0]
+
+$ docker exec dss150p-postgres psql -U dss150p -d dss150p -c "SELECT stage_run_id, pipeline_run_id, stage, attempt, status, rows_out, left(message, 70) AS message FROM audit.stage_runs WHERE pipeline_run_id LIKE 'scheduled__%' ORDER BY stage_run_id;"
+ stage_run_id |           pipeline_run_id            |   stage   | attempt | status  | rows_out |                                message                                 
+--------------+--------------------------------------+-----------+---------+---------+----------+------------------------------------------------------------------------
+            9 | scheduled__2026-09-21T18:00:00+00:00 | extract   |       1 | SUCCESS |    53609 | raw snapshot data/raw/run_id=scheduled__2026-09-21T18_00_00_00_00 (cus
+           10 | scheduled__2026-09-21T18:00:00+00:00 | transform |       1 | SUCCESS |    49897 | staging customers=3000 products=599 orders=49998; curated=49897 in 21 
+           11 | scheduled__2026-09-21T18:00:00+00:00 | load      |       1 | SUCCESS |        0 | curated.sales_order_lines upsert: 0 written, 49897 unchanged (record_h
+           12 | scheduled__2026-09-21T18:00:00+00:00 | validate  |       1 | SUCCESS |          | curated file and warehouse checks passed (full dataset)
+(4 rows)
+
+

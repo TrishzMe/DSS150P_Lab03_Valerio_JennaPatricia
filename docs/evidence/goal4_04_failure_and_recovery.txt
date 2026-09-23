@@ -1,0 +1,220 @@
+# Goal 4 / Task E - controlled failure (source file temporarily renamed), retries, failure callback, restore, recovery of the same DAG run
+# Captured 2026-09-23T01:11:57Z on Windows 11 (Git Bash, .venv active); PostgreSQL 16 in Docker
+
+## 1. Break the input without changing any source bytes
+$ sha256sum data/source/orders.csv
+f2de6cbd4ce9d3838401d3d6468accd40815c14bb6cb682f4340d897fd4338c3 *data/source/orders.csv
+[exit code: 0]
+
+$ mv data/source/orders.csv data/source/orders.csv.bak
+[exit code: 0]
+
+$ git status --short
+ D data/source/orders.csv
+?? data/source/orders.csv.bak
+?? docs/evidence/goal4_01_airflow_setup_and_dag.txt
+?? docs/evidence/goal4_02_manual_full_run.txt
+?? docs/evidence/goal4_03_partition_run.txt
+?? docs/evidence/goal4_04_failure_and_recovery.txt
+[exit code: 0]
+
+$ docker exec dss150p-airflow-scheduler airflow dags trigger dss150p_sales_pipeline -c '{"run_mode": "full"}' -o json
+created dag_run_id: manual__2026-09-23T01:12:01+00:00
+
+$ (poll airflow dags list-runs until the run is finished; retry_delay is 1 minute)
+dag run manual__2026-09-23T01:12:01+00:00 finished: failed
+
+## 2. Failed state and retry attempts
+$ docker exec dss150p-airflow-scheduler airflow dags list-runs -d dss150p_sales_pipeline | head -4
+dag_id                 | run_id                               | state   | execution_date            | start_date                       | end_date                        
+=======================+======================================+=========+===========================+==================================+=================================
+dss150p_sales_pipeline | manual__2026-09-23T01:12:01+00:00    | failed  | 2026-09-23T01:12:01+00:00 | 2026-09-23T01:12:01.362288+00:00 | 2026-09-23T01:14:10.350775+00:00
+dss150p_sales_pipeline | manual__2026-09-23T01:10:52+00:00    | success | 2026-09-23T01:10:52+00:00 | 2026-09-23T01:10:52.893692+00:00 | 2026-09-23T01:11:08.953579+00:00
+[exit code: 0]
+
+$ curl -u $AIRFLOW_ADMIN_USER:*** .../dagRuns/<run>/taskInstances   (tabulated)
+task_id    state            try max_tries start_date (UTC)            end_date (UTC)              duration_s
+extract    failed             3         2 2026-09-23T01:14:05.603650  2026-09-23T01:14:07.634338        2.03
+transform  upstream_failed    0         2 2026-09-23T01:14:07.752791  2026-09-23T01:14:07.752791        0.00
+load       upstream_failed    0         2 2026-09-23T01:14:08.697029  2026-09-23T01:14:08.697029        0.00
+validate   upstream_failed    0         2 2026-09-23T01:14:09.749721  2026-09-23T01:14:09.749721        0.00
+
+$ find "logs/dag_id=dss150p_sales_pipeline/run_id=manual__2026-09-23T01:12:01+00:00" -name '*.log' | sort
+logs/dag_id=dss150p_sales_pipeline/run_id=manual__2026-09-23T01:12:01+00:00/task_id=extract/attempt=1.log
+logs/dag_id=dss150p_sales_pipeline/run_id=manual__2026-09-23T01:12:01+00:00/task_id=extract/attempt=2.log
+logs/dag_id=dss150p_sales_pipeline/run_id=manual__2026-09-23T01:12:01+00:00/task_id=extract/attempt=3.log
+[exit code: 0]
+
+$ grep -E 'Starting attempt|ERROR \[src.cli\]|Command exited with return code|Marking task as|DSS150P task' "logs/dag_id=dss150p_sales_pipeline/run_id=manual__2026-09-23T01:12:01+00:00/task_id=extract/attempt=1.log" | cut -c1-330
+[2026-09-23T01:12:01.599+0000] {taskinstance.py:2867} INFO - Starting attempt 1 of 3
+[2026-09-23T01:12:03.110+0000] {subprocess.py:106} INFO - 2026-09-23T01:12:03Z ERROR [src.cli] stage "extract" failed for pipeline_run_id=manual__2026-09-23T01:12:01+00:00: FileNotFoundError: source file(s) not found: data/source/orders.csv (source_dir=data/source)
+[2026-09-23T01:12:03.218+0000] {subprocess.py:110} INFO - Command exited with return code 1
+[2026-09-23T01:12:03.247+0000] {taskinstance.py:1226} INFO - Marking task as UP_FOR_RETRY. dag_id=dss150p_sales_pipeline, task_id=extract, run_id=manual__2026-09-23T01:12:01+00:00, execution_date=20260923T011201, start_date=20260923T011201, end_date=20260923T011203
+[2026-09-23T01:12:03.252+0000] {dss150p_pipeline.py:50} ERROR - DSS150P task up_for_retry: {"event": "up_for_retry", "recorded_at_utc": "2026-09-23T01:12:03.251331+00:00", "dag_id": "dss150p_sales_pipeline", "task_id": "extract", "run_id": "manual__2026-09-23T01:12:01+00:00", "try_number": 1, "max_tries": 2, "params": {"run_mode
+[exit code: 0]
+
+$ grep -E 'Starting attempt|ERROR \[src.cli\]|Command exited with return code|Marking task as|DSS150P task' "logs/dag_id=dss150p_sales_pipeline/run_id=manual__2026-09-23T01:12:01+00:00/task_id=extract/attempt=2.log" | cut -c1-330
+[2026-09-23T01:13:03.495+0000] {taskinstance.py:2867} INFO - Starting attempt 2 of 3
+[2026-09-23T01:13:04.858+0000] {subprocess.py:106} INFO - 2026-09-23T01:13:04Z ERROR [src.cli] stage "extract" failed for pipeline_run_id=manual__2026-09-23T01:12:01+00:00: FileNotFoundError: source file(s) not found: data/source/orders.csv (source_dir=data/source)
+[2026-09-23T01:13:04.958+0000] {subprocess.py:110} INFO - Command exited with return code 1
+[2026-09-23T01:13:04.982+0000] {taskinstance.py:1226} INFO - Marking task as UP_FOR_RETRY. dag_id=dss150p_sales_pipeline, task_id=extract, run_id=manual__2026-09-23T01:12:01+00:00, execution_date=20260923T011201, start_date=20260923T011303, end_date=20260923T011304
+[2026-09-23T01:13:04.984+0000] {dss150p_pipeline.py:50} ERROR - DSS150P task up_for_retry: {"event": "up_for_retry", "recorded_at_utc": "2026-09-23T01:13:04.984562+00:00", "dag_id": "dss150p_sales_pipeline", "task_id": "extract", "run_id": "manual__2026-09-23T01:12:01+00:00", "try_number": 2, "max_tries": 2, "params": {"run_mode
+[exit code: 0]
+
+$ grep -E 'Starting attempt|ERROR \[src.cli\]|Command exited with return code|Marking task as|DSS150P task' "logs/dag_id=dss150p_sales_pipeline/run_id=manual__2026-09-23T01:12:01+00:00/task_id=extract/attempt=3.log" | cut -c1-330
+[2026-09-23T01:14:05.619+0000] {taskinstance.py:2867} INFO - Starting attempt 3 of 3
+[2026-09-23T01:14:07.493+0000] {subprocess.py:106} INFO - 2026-09-23T01:14:07Z ERROR [src.cli] stage "extract" failed for pipeline_run_id=manual__2026-09-23T01:12:01+00:00: FileNotFoundError: source file(s) not found: data/source/orders.csv (source_dir=data/source)
+[2026-09-23T01:14:07.612+0000] {subprocess.py:110} INFO - Command exited with return code 1
+[2026-09-23T01:14:07.635+0000] {taskinstance.py:1226} INFO - Marking task as FAILED. dag_id=dss150p_sales_pipeline, task_id=extract, run_id=manual__2026-09-23T01:12:01+00:00, execution_date=20260923T011201, start_date=20260923T011405, end_date=20260923T011407
+[2026-09-23T01:14:07.638+0000] {dss150p_pipeline.py:50} ERROR - DSS150P task failed: {"event": "failed", "recorded_at_utc": "2026-09-23T01:14:07.638228+00:00", "dag_id": "dss150p_sales_pipeline", "task_id": "extract", "run_id": "manual__2026-09-23T01:12:01+00:00", "try_number": 3, "max_tries": 2, "params": {"run_mode": "full", "
+[exit code: 0]
+
+## 3. Failure/retry callback output (logs/dss150p_task_events.jsonl, one JSON object per event)
+$ grep -F 'manual__2026-09-23T01:12:01+00:00' logs/dss150p_task_events.jsonl | python -m json.tool --json-lines
+{
+    "event": "up_for_retry",
+    "recorded_at_utc": "2026-09-23T01:12:03.251331+00:00",
+    "dag_id": "dss150p_sales_pipeline",
+    "task_id": "extract",
+    "run_id": "manual__2026-09-23T01:12:01+00:00",
+    "try_number": 1,
+    "max_tries": 2,
+    "params": {
+        "run_mode": "full",
+        "year": 2026,
+        "month": 1
+    },
+    "exception": "AirflowException('Bash command failed. The command returned a non-zero exit code 1.')",
+    "log_url": "http://localhost:8080/dags/dss150p_sales_pipeline/grid?dag_run_id=manual__2026-09-23T01%3A12%3A01%2B00%3A00&task_id=extract&base_date=2026-09-23T01%3A12%3A01%2B0000&tab=logs"
+}
+{
+    "event": "up_for_retry",
+    "recorded_at_utc": "2026-09-23T01:13:04.984562+00:00",
+    "dag_id": "dss150p_sales_pipeline",
+    "task_id": "extract",
+    "run_id": "manual__2026-09-23T01:12:01+00:00",
+    "try_number": 2,
+    "max_tries": 2,
+    "params": {
+        "run_mode": "full",
+        "year": 2026,
+        "month": 1
+    },
+    "exception": "AirflowException('Bash command failed. The command returned a non-zero exit code 1.')",
+    "log_url": "http://localhost:8080/dags/dss150p_sales_pipeline/grid?dag_run_id=manual__2026-09-23T01%3A12%3A01%2B00%3A00&task_id=extract&base_date=2026-09-23T01%3A12%3A01%2B0000&tab=logs"
+}
+{
+    "event": "failed",
+    "recorded_at_utc": "2026-09-23T01:14:07.638228+00:00",
+    "dag_id": "dss150p_sales_pipeline",
+    "task_id": "extract",
+    "run_id": "manual__2026-09-23T01:12:01+00:00",
+    "try_number": 3,
+    "max_tries": 2,
+    "params": {
+        "run_mode": "full",
+        "year": 2026,
+        "month": 1
+    },
+    "exception": "AirflowException('Bash command failed. The command returned a non-zero exit code 1.')",
+    "log_url": "http://localhost:8080/dags/dss150p_sales_pipeline/grid?dag_run_id=manual__2026-09-23T01%3A12%3A01%2B00%3A00&task_id=extract&base_date=2026-09-23T01%3A12%3A01%2B0000&tab=logs"
+}
+[exit code: 0]
+
+## 4. The pipeline's own audit trail recorded every attempt
+$ docker exec dss150p-postgres psql -U dss150p -d dss150p -c "SELECT stage_run_id, stage, attempt, status, started_at_utc, completed_at_utc, message FROM audit.stage_runs WHERE pipeline_run_id = 'manual__2026-09-23T01:12:01+00:00' ORDER BY stage_run_id;"
+ stage_run_id |  stage  | attempt | status |        started_at_utc         |       completed_at_utc        |                                           message                                            
+--------------+---------+---------+--------+-------------------------------+-------------------------------+----------------------------------------------------------------------------------------------
+           25 | extract |       1 | FAILED | 2026-09-23 01:12:03.04817+00  | 2026-09-23 01:12:03.096091+00 | FileNotFoundError: source file(s) not found: data/source/orders.csv (source_dir=data/source)
+           26 | extract |       2 | FAILED | 2026-09-23 01:13:04.807367+00 | 2026-09-23 01:13:04.845143+00 | FileNotFoundError: source file(s) not found: data/source/orders.csv (source_dir=data/source)
+           27 | extract |       3 | FAILED | 2026-09-23 01:14:07.433167+00 | 2026-09-23 01:14:07.476821+00 | FileNotFoundError: source file(s) not found: data/source/orders.csv (source_dir=data/source)
+(3 rows)
+
+
+$ docker exec dss150p-postgres psql -U dss150p -d dss150p -c "SELECT pipeline_run_id, status, last_stage, message FROM audit.pipeline_runs WHERE pipeline_run_id = 'manual__2026-09-23T01:12:01+00:00';"
+          pipeline_run_id          | status | last_stage |                                                message                                                
+-----------------------------------+--------+------------+-------------------------------------------------------------------------------------------------------
+ manual__2026-09-23T01:12:01+00:00 | FAILED | extract    | extract: FileNotFoundError: source file(s) not found: data/source/orders.csv (source_dir=data/source)
+(1 row)
+
+
+$ ls data/raw   # no raw folder exists for the failed run
+_latest_run.json
+run_id=manual__2026-09-23T00_59_11_00_00/
+run_id=manual__2026-09-23T01_09_53_00_00/
+run_id=manual__2026-09-23T01_10_52_00_00/
+run_id=run_20260923T004647Z_8d7ec271/
+run_id=scheduled__2026-09-21T18_00_00_00_00/
+[exit code: 0]
+
+## 5. Restore the source and recover the same DAG run (clear extract + downstream)
+$ mv data/source/orders.csv.bak data/source/orders.csv
+[exit code: 0]
+
+$ sha256sum data/source/orders.csv   # identical to step 1
+f2de6cbd4ce9d3838401d3d6468accd40815c14bb6cb682f4340d897fd4338c3 *data/source/orders.csv
+[exit code: 0]
+
+$ git status --short   # clean: source files unchanged
+?? docs/evidence/goal4_01_airflow_setup_and_dag.txt
+?? docs/evidence/goal4_02_manual_full_run.txt
+?? docs/evidence/goal4_03_partition_run.txt
+?? docs/evidence/goal4_04_failure_and_recovery.txt
+[exit code: 0]
+
+$ docker exec dss150p-airflow-scheduler airflow tasks clear dss150p_sales_pipeline --task-regex '^extract$' --downstream --start-date '2026-09-23T01:12:01+00:00' --end-date '2026-09-23T01:12:01+00:00' --yes
+[2026-09-23T01:14:26.031+0000] {dagbag.py:588} INFO - Filling up the DagBag from /opt/airflow/dags
+[exit code: 0]
+
+$ (poll airflow dags list-runs until the run is finished)
+dag run manual__2026-09-23T01:12:01+00:00 finished: success
+
+$ docker exec dss150p-airflow-scheduler airflow dags list-runs -d dss150p_sales_pipeline | head -4
+dag_id                 | run_id                               | state   | execution_date            | start_date                       | end_date                        
+=======================+======================================+=========+===========================+==================================+=================================
+dss150p_sales_pipeline | manual__2026-09-23T01:12:01+00:00    | success | 2026-09-23T01:12:01+00:00 | 2026-09-23T01:14:26.641848+00:00 | 2026-09-23T01:14:48.771221+00:00
+dss150p_sales_pipeline | manual__2026-09-23T01:10:52+00:00    | success | 2026-09-23T01:10:52+00:00 | 2026-09-23T01:10:52.893692+00:00 | 2026-09-23T01:11:08.953579+00:00
+[exit code: 0]
+
+$ curl -u $AIRFLOW_ADMIN_USER:*** .../dagRuns/<run>/taskInstances   (tabulated)
+task_id    state            try max_tries start_date (UTC)            end_date (UTC)              duration_s
+extract    success            4         5 2026-09-23T01:14:26.872022  2026-09-23T01:14:29.006833        2.13
+transform  success            1         2 2026-09-23T01:14:30.008526  2026-09-23T01:14:34.437888        4.43
+load       success            1         2 2026-09-23T01:14:35.508759  2026-09-23T01:14:40.128062        4.62
+validate   success            1         2 2026-09-23T01:14:40.812460  2026-09-23T01:14:48.249001        7.44
+
+$ grep -E 'Starting attempt|INFO \[src.pipeline\]|Command exited with return code' "logs/dag_id=dss150p_sales_pipeline/run_id=manual__2026-09-23T01:12:01+00:00/task_id=extract/attempt=4.log" | cut -c1-260
+[2026-09-23T01:14:26.880+0000] {taskinstance.py:2867} INFO - Starting attempt 4 of 6
+[2026-09-23T01:14:28.326+0000] {subprocess.py:106} INFO - 2026-09-23T01:14:28Z INFO [src.pipeline] stage=extract run_id=manual__2026-09-23T01:12:01+00:00 status=STARTED
+[2026-09-23T01:14:28.876+0000] {subprocess.py:106} INFO - 2026-09-23T01:14:28Z INFO [src.pipeline] stage=extract run_id=manual__2026-09-23T01:12:01+00:00 status=SUCCESS in 0.52s: raw snapshot data/raw/run_id=manual__2026-09-23T01_12_01_00_00 (customers.csv=300
+[2026-09-23T01:14:28.972+0000] {subprocess.py:110} INFO - Command exited with return code 0
+[exit code: 0]
+
+$ docker exec dss150p-postgres psql -U dss150p -d dss150p -c "SELECT stage_run_id, stage, attempt, status, completed_at_utc, rows_out, left(message, 80) AS message FROM audit.stage_runs WHERE pipeline_run_id = 'manual__2026-09-23T01:12:01+00:00' ORDER BY stage_run_id;"
+ stage_run_id |   stage   | attempt | status  |       completed_at_utc        | rows_out |                                     message                                      
+--------------+-----------+---------+---------+-------------------------------+----------+----------------------------------------------------------------------------------
+           25 | extract   |       1 | FAILED  | 2026-09-23 01:12:03.096091+00 |          | FileNotFoundError: source file(s) not found: data/source/orders.csv (source_dir=
+           26 | extract   |       2 | FAILED  | 2026-09-23 01:13:04.845143+00 |          | FileNotFoundError: source file(s) not found: data/source/orders.csv (source_dir=
+           27 | extract   |       3 | FAILED  | 2026-09-23 01:14:07.476821+00 |          | FileNotFoundError: source file(s) not found: data/source/orders.csv (source_dir=
+           28 | extract   |       4 | SUCCESS | 2026-09-23 01:14:28.86324+00  |    53609 | raw snapshot data/raw/run_id=manual__2026-09-23T01_12_01_00_00 (customers.csv=30
+           29 | transform |       1 | SUCCESS | 2026-09-23 01:14:34.29237+00  |    49897 | staging customers=3000 products=599 orders=49998; curated=49897 in 21 year/month
+           30 | load      |       1 | SUCCESS | 2026-09-23 01:14:39.969718+00 |        0 | curated.sales_order_lines upsert: 0 written, 49897 unchanged (record_hash match)
+           31 | validate  |       1 | SUCCESS | 2026-09-23 01:14:48.047158+00 |          | curated file and warehouse checks passed (full dataset)
+(7 rows)
+
+
+$ docker exec dss150p-postgres psql -U dss150p -d dss150p -c "SELECT pipeline_run_id, status, last_stage, rows_curated, rows_quarantined FROM audit.pipeline_runs WHERE pipeline_run_id = 'manual__2026-09-23T01:12:01+00:00';"
+          pipeline_run_id          | status  | last_stage | rows_curated | rows_quarantined 
+-----------------------------------+---------+------------+--------------+------------------
+ manual__2026-09-23T01:12:01+00:00 | SUCCESS | validate   |        49897 |              104
+(1 row)
+
+
+## 6. No manual database cleanup, no duplicate business rows
+$ docker exec dss150p-postgres psql -U dss150p -d dss150p -c "SELECT COUNT(*) total, COUNT(DISTINCT order_id) distinct_orders FROM curated.sales_order_lines;"
+ total | distinct_orders 
+-------+-----------------
+ 49897 |           49897
+(1 row)
+
+

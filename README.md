@@ -85,6 +85,39 @@ docker exec -it dss150p-postgres psql -U dss150p -d dss150p -c "SELECT * FROM au
   materialized format files in `data/benchmarks/formats/` are not committed.
 - Interpretation and §9.5 answers: [docs/goal3_storage_benchmark.md](docs/goal3_storage_benchmark.md).
 
+## 4. Airflow orchestration (Goal 4)
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.airflow.yml build
+docker compose -f docker-compose.yml -f docker-compose.airflow.yml up airflow-init
+docker compose -f docker-compose.yml -f docker-compose.airflow.yml up -d airflow-webserver airflow-scheduler
+docker compose -f docker-compose.yml -f docker-compose.airflow.yml ps
+docker exec dss150p-airflow-scheduler airflow dags unpause dss150p_sales_pipeline
+```
+
+UI: http://localhost:8080. The login comes from `AIRFLOW_ADMIN_USER` / `AIRFLOW_ADMIN_PASSWORD` in `.env`
+(`admin`/`admin` in `.env.example`; local training use only).
+
+Unpausing starts the latest scheduled interval immediately (`catchup=False`, so only one). To
+trigger runs manually, from the UI (▶ with config) or the CLI:
+
+```bash
+docker exec dss150p-airflow-scheduler airflow dags trigger dss150p_sales_pipeline -c '{"run_mode": "full"}'
+docker exec dss150p-airflow-scheduler airflow dags trigger dss150p_sales_pipeline -c '{"run_mode": "partition", "year": 2025, "month": 12}'
+docker exec dss150p-airflow-scheduler airflow dags list-runs -d dss150p_sales_pipeline
+```
+
+Failure/recovery drill:
+1. `mv data/source/orders.csv data/source/orders.csv.bak`
+2. Trigger a run and watch extract fail three times.
+3. `mv data/source/orders.csv.bak data/source/orders.csv`
+4. `docker exec dss150p-airflow-scheduler airflow tasks clear dss150p_sales_pipeline --task-regex '^extract$' --downstream --start-date <logical date> --end-date <logical date> --yes`
+
+Stop with `docker compose -f docker-compose.yml -f docker-compose.airflow.yml down`.
+Configuration rationale, run evidence, rerun safety, and backfill reasoning:
+[docs/goal4_airflow.md](docs/goal4_airflow.md). Task logs are written to `logs/` (not committed),
+and retry/failure callback events to `logs/dss150p_task_events.jsonl`.
+
 ## Configuration
 
 | File | Committed | Purpose |
@@ -108,4 +141,7 @@ See [docs/goal1_environment.md](docs/goal1_environment.md).
 | Password changed after first start | the volume keeps the original password: `docker compose down -v` to re-initialize (**deletes lab data**) |
 | `relation "audit.stage_runs" does not exist` or `column "load_count" ... does not exist` | the volume was initialized before `sql/init/02_audit_schema.sql`/`03_partition_audit.sql` existed: pipe each file into `docker exec -i dss150p-postgres psql -U dss150p -d dss150p < sql/init/<file>` (both are idempotent) |
 | `partition 2026-01 not found` | run `transform` (or `run-all`) first; it writes `data/partitioned/` |
+| DAG not visible / import error | `docker exec dss150p-airflow-scheduler airflow dags list-import-errors`; the file must be under `dags/` (mounted at `/opt/airflow/dags`) |
+| Triggered run stays queued | the DAG starts paused: `airflow dags unpause dss150p_sales_pipeline` (or the toggle in the UI) |
+| Airflow cannot log in to its metadata DB | the `airflow` database is created by `sql/init/00_create_databases.sql` only on a fresh volume; re-initialize with `docker compose down -v` (**deletes lab data**) |
 | `no curated output found` | run `python -m src.cli run-all` first; `load`/`validate` operate on an existing run |

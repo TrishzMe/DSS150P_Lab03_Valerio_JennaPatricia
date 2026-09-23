@@ -1,0 +1,129 @@
+# Goal 4 / Task C - manual full run triggered with run_mode=full; states, tries, timing, logs, shared run id
+# Captured 2026-09-23T01:09:50Z on Windows 11 (Git Bash, .venv active); PostgreSQL 16 in Docker
+
+$ docker exec dss150p-airflow-scheduler airflow dags trigger dss150p_sales_pipeline -c '{"run_mode": "full"}' -o json
+created dag_run_id: manual__2026-09-23T01:09:53+00:00
+
+$ (poll airflow dags list-runs until the run is finished)
+dag run manual__2026-09-23T01:09:53+00:00 finished: success
+
+$ docker exec dss150p-airflow-scheduler airflow dags list-runs -d dss150p_sales_pipeline
+dag_id                 | run_id                               | state   | execution_date            | start_date                       | end_date                        
+=======================+======================================+=========+===========================+==================================+=================================
+dss150p_sales_pipeline | manual__2026-09-23T01:09:53+00:00    | success | 2026-09-23T01:09:53+00:00 | 2026-09-23T01:09:54.339941+00:00 | 2026-09-23T01:10:13.461605+00:00
+dss150p_sales_pipeline | manual__2026-09-23T00:59:11+00:00    | success | 2026-09-23T00:59:11+00:00 | 2026-09-23T00:59:11.914117+00:00 | 2026-09-23T00:59:32.819236+00:00
+dss150p_sales_pipeline | scheduled__2026-09-21T18:00:00+00:00 | success | 2026-09-21T18:00:00+00:00 | 2026-09-23T00:54:48.080155+00:00 | 2026-09-23T00:55:08.209905+00:00
+                                                                                                                                                                         
+[exit code: 0]
+
+$ docker exec dss150p-airflow-scheduler airflow tasks states-for-dag-run dss150p_sales_pipeline 'manual__2026-09-23T01:09:53+00:00'
+dag_id                 | execution_date            | task_id   | state   | start_date                       | end_date                        
+=======================+===========================+===========+=========+==================================+=================================
+dss150p_sales_pipeline | 2026-09-23T01:09:53+00:00 | extract   | success | 2026-09-23T01:09:54.585279+00:00 | 2026-09-23T01:09:56.666903+00:00
+dss150p_sales_pipeline | 2026-09-23T01:09:53+00:00 | load      | success | 2026-09-23T01:10:02.126761+00:00 | 2026-09-23T01:10:06.250618+00:00
+dss150p_sales_pipeline | 2026-09-23T01:09:53+00:00 | transform | success | 2026-09-23T01:09:56.939547+00:00 | 2026-09-23T01:10:01.529437+00:00
+dss150p_sales_pipeline | 2026-09-23T01:09:53+00:00 | validate  | success | 2026-09-23T01:10:07.000864+00:00 | 2026-09-23T01:10:13.087294+00:00
+                                                                                                                                              
+[exit code: 0]
+
+$ curl -u $AIRFLOW_ADMIN_USER:*** http://localhost:8080/api/v1/dags/dss150p_sales_pipeline/dagRuns/<run>/taskInstances   (tabulated)
+task_id    state            try max_tries start_date (UTC)            end_date (UTC)              duration_s
+extract    success            1         2 2026-09-23T01:09:54.585279  2026-09-23T01:09:56.666903        2.08
+transform  success            1         2 2026-09-23T01:09:56.939547  2026-09-23T01:10:01.529437        4.59
+load       success            1         2 2026-09-23T01:10:02.126761  2026-09-23T01:10:06.250618        4.12
+validate   success            1         2 2026-09-23T01:10:07.000864  2026-09-23T01:10:13.087294        6.09
+
+## Task logs on the host (logs/ bind mount): one attempt per task
+$ find "logs/dag_id=dss150p_sales_pipeline/run_id=manual__2026-09-23T01:09:53+00:00" -name '*.log' | sort
+logs/dag_id=dss150p_sales_pipeline/run_id=manual__2026-09-23T01:09:53+00:00/task_id=extract/attempt=1.log
+logs/dag_id=dss150p_sales_pipeline/run_id=manual__2026-09-23T01:09:53+00:00/task_id=load/attempt=1.log
+logs/dag_id=dss150p_sales_pipeline/run_id=manual__2026-09-23T01:09:53+00:00/task_id=transform/attempt=1.log
+logs/dag_id=dss150p_sales_pipeline/run_id=manual__2026-09-23T01:09:53+00:00/task_id=validate/attempt=1.log
+[exit code: 0]
+
+$ grep -E 'Starting attempt|Running command|INFO \[src|OK pipeline_run_id|exited with return code|Marking task as' "logs/dag_id=dss150p_sales_pipeline/run_id=manual__2026-09-23T01:09:53+00:00/task_id=extract/attempt=1.log" | cut -c1-260
+[2026-09-23T01:09:54.593+0000] {taskinstance.py:2867} INFO - Starting attempt 1 of 3
+[2026-09-23T01:09:54.793+0000] {subprocess.py:88} INFO - Running command: ['/usr/bin/bash', '-c', 'cd /opt/airflow/project && python -m src.cli extract']
+[2026-09-23T01:09:56.001+0000] {subprocess.py:106} INFO - 2026-09-23T01:09:56Z INFO [src.pipeline] stage=extract run_id=manual__2026-09-23T01:09:53+00:00 status=STARTED
+[2026-09-23T01:09:56.514+0000] {subprocess.py:106} INFO - 2026-09-23T01:09:56Z INFO [src.pipeline] stage=extract run_id=manual__2026-09-23T01:09:53+00:00 status=SUCCESS in 0.48s: raw snapshot data/raw/run_id=manual__2026-09-23T01_09_53_00_00 (customers.csv=300
+[2026-09-23T01:09:56.515+0000] {subprocess.py:106} INFO - extract OK pipeline_run_id=manual__2026-09-23T01:09:53+00:00
+[2026-09-23T01:09:56.631+0000] {subprocess.py:110} INFO - Command exited with return code 0
+[2026-09-23T01:09:56.666+0000] {taskinstance.py:353} INFO - Marking task as SUCCESS. dag_id=dss150p_sales_pipeline, task_id=extract, run_id=manual__2026-09-23T01:09:53+00:00, execution_date=20260923T010953, start_date=20260923T010954, end_date=20260923T010956
+[2026-09-23T01:09:56.713+0000] {local_task_job_runner.py:266} INFO - Task exited with return code 0
+[exit code: 0]
+
+$ grep -E 'Starting attempt|Running command|INFO \[src|OK pipeline_run_id|exited with return code|Marking task as' "logs/dag_id=dss150p_sales_pipeline/run_id=manual__2026-09-23T01:09:53+00:00/task_id=transform/attempt=1.log" | cut -c1-260
+[2026-09-23T01:09:56.949+0000] {taskinstance.py:2867} INFO - Starting attempt 1 of 3
+[2026-09-23T01:09:57.167+0000] {subprocess.py:88} INFO - Running command: ['/usr/bin/bash', '-c', 'cd /opt/airflow/project && python -m src.cli transform']
+[2026-09-23T01:09:58.372+0000] {subprocess.py:106} INFO - 2026-09-23T01:09:58Z INFO [src.pipeline] stage=transform run_id=manual__2026-09-23T01:09:53+00:00 status=STARTED
+[2026-09-23T01:10:01.390+0000] {subprocess.py:106} INFO - 2026-09-23T01:10:01Z INFO [src.pipeline] stage=transform run_id=manual__2026-09-23T01:09:53+00:00 status=SUCCESS in 2.99s: staging customers=3000 products=599 orders=49998; curated=49897 in 21 year/mont
+[2026-09-23T01:10:01.391+0000] {subprocess.py:106} INFO - transform OK pipeline_run_id=manual__2026-09-23T01:09:53+00:00
+[2026-09-23T01:10:01.495+0000] {subprocess.py:110} INFO - Command exited with return code 0
+[2026-09-23T01:10:01.529+0000] {taskinstance.py:353} INFO - Marking task as SUCCESS. dag_id=dss150p_sales_pipeline, task_id=transform, run_id=manual__2026-09-23T01:09:53+00:00, execution_date=20260923T010953, start_date=20260923T010956, end_date=20260923T01100
+[2026-09-23T01:10:01.597+0000] {local_task_job_runner.py:266} INFO - Task exited with return code 0
+[exit code: 0]
+
+$ grep -E 'Starting attempt|Running command|INFO \[src|OK pipeline_run_id|exited with return code|Marking task as' "logs/dag_id=dss150p_sales_pipeline/run_id=manual__2026-09-23T01:09:53+00:00/task_id=load/attempt=1.log" | cut -c1-260
+[2026-09-23T01:10:02.138+0000] {taskinstance.py:2867} INFO - Starting attempt 1 of 3
+[2026-09-23T01:10:02.345+0000] {subprocess.py:88} INFO - Running command: ['/usr/bin/bash', '-c', 'cd /opt/airflow/project && python -m src.cli load']
+[2026-09-23T01:10:03.576+0000] {subprocess.py:106} INFO - 2026-09-23T01:10:03Z INFO [src.pipeline] stage=load run_id=manual__2026-09-23T01:09:53+00:00 status=STARTED
+[2026-09-23T01:10:06.103+0000] {subprocess.py:106} INFO - 2026-09-23T01:10:06Z INFO [src.load.postgres] run_id=manual__2026-09-23T01:09:53+00:00 upsert into curated.sales_order_lines: inserted=0 updated=0 unchanged=49897
+[2026-09-23T01:10:06.117+0000] {subprocess.py:106} INFO - 2026-09-23T01:10:06Z INFO [src.pipeline] stage=load run_id=manual__2026-09-23T01:09:53+00:00 status=SUCCESS in 2.51s: curated.sales_order_lines upsert: 0 written, 49897 unchanged (record_hash match)
+[2026-09-23T01:10:06.119+0000] {subprocess.py:106} INFO - load OK pipeline_run_id=manual__2026-09-23T01:09:53+00:00
+[2026-09-23T01:10:06.215+0000] {subprocess.py:110} INFO - Command exited with return code 0
+[2026-09-23T01:10:06.250+0000] {taskinstance.py:353} INFO - Marking task as SUCCESS. dag_id=dss150p_sales_pipeline, task_id=load, run_id=manual__2026-09-23T01:09:53+00:00, execution_date=20260923T010953, start_date=20260923T011002, end_date=20260923T011006
+[2026-09-23T01:10:06.304+0000] {local_task_job_runner.py:266} INFO - Task exited with return code 0
+[exit code: 0]
+
+$ grep -E 'Starting attempt|Running command|INFO \[src|OK pipeline_run_id|exited with return code|Marking task as' "logs/dag_id=dss150p_sales_pipeline/run_id=manual__2026-09-23T01:09:53+00:00/task_id=validate/attempt=1.log" | cut -c1-260
+[2026-09-23T01:10:07.009+0000] {taskinstance.py:2867} INFO - Starting attempt 1 of 3
+[2026-09-23T01:10:07.190+0000] {subprocess.py:88} INFO - Running command: ['/usr/bin/bash', '-c', 'cd /opt/airflow/project && python -m src.cli validate']
+[2026-09-23T01:10:08.396+0000] {subprocess.py:106} INFO - 2026-09-23T01:10:08Z INFO [src.pipeline] stage=validate run_id=manual__2026-09-23T01:09:53+00:00 status=STARTED
+[2026-09-23T01:10:12.939+0000] {subprocess.py:106} INFO - 2026-09-23T01:10:12Z INFO [src.pipeline] stage=validate run_id=manual__2026-09-23T01:09:53+00:00 status=SUCCESS in 4.51s: curated file and warehouse checks passed (full dataset)
+[2026-09-23T01:10:12.941+0000] {subprocess.py:106} INFO - validate OK pipeline_run_id=manual__2026-09-23T01:09:53+00:00
+[2026-09-23T01:10:13.053+0000] {subprocess.py:110} INFO - Command exited with return code 0
+[2026-09-23T01:10:13.087+0000] {taskinstance.py:353} INFO - Marking task as SUCCESS. dag_id=dss150p_sales_pipeline, task_id=validate, run_id=manual__2026-09-23T01:09:53+00:00, execution_date=20260923T010953, start_date=20260923T011007, end_date=20260923T011013
+[2026-09-23T01:10:13.143+0000] {local_task_job_runner.py:266} INFO - Task exited with return code 0
+[exit code: 0]
+
+## One pipeline_run_id through every task (Airflow run_id -> PIPELINE_RUN_ID)
+$ docker exec dss150p-postgres psql -U dss150p -d dss150p -c "SELECT stage_run_id, pipeline_run_id, stage, attempt, status, started_at_utc, completed_at_utc, rows_in, rows_out FROM audit.stage_runs WHERE pipeline_run_id = 'manual__2026-09-23T01:09:53+00:00' ORDER BY stage_run_id;"
+ stage_run_id |          pipeline_run_id          |   stage   | attempt | status  |        started_at_utc         |       completed_at_utc        | rows_in | rows_out 
+--------------+-----------------------------------+-----------+---------+---------+-------------------------------+-------------------------------+---------+----------
+           17 | manual__2026-09-23T01:09:53+00:00 | extract   |       1 | SUCCESS | 2026-09-23 01:09:56.00155+00  | 2026-09-23 01:09:56.501841+00 |         |    53609
+           18 | manual__2026-09-23T01:09:53+00:00 | transform |       1 | SUCCESS | 2026-09-23 01:09:58.372826+00 | 2026-09-23 01:10:01.377807+00 |   53609 |    49897
+           19 | manual__2026-09-23T01:09:53+00:00 | load      |       1 | SUCCESS | 2026-09-23 01:10:03.57618+00  | 2026-09-23 01:10:06.106539+00 |   49897 |        0
+           20 | manual__2026-09-23T01:09:53+00:00 | validate  |       1 | SUCCESS | 2026-09-23 01:10:08.3967+00   | 2026-09-23 01:10:12.926022+00 |   49897 |         
+(4 rows)
+
+
+$ docker exec dss150p-postgres psql -U dss150p -d dss150p -c "SELECT pipeline_run_id, status, last_stage, rows_staging, rows_curated, rows_quarantined FROM audit.pipeline_runs WHERE pipeline_run_id = 'manual__2026-09-23T01:09:53+00:00';"
+          pipeline_run_id          | status  | last_stage | rows_staging | rows_curated | rows_quarantined 
+-----------------------------------+---------+------------+--------------+--------------+------------------
+ manual__2026-09-23T01:09:53+00:00 | SUCCESS | validate   |        53597 |        49897 |              104
+(1 row)
+
+
+$ ls data/raw data/curated
+data/curated:
+_latest_run.json
+run_id=manual__2026-09-23T00_59_11_00_00/
+run_id=manual__2026-09-23T01_09_53_00_00/
+run_id=run_20260923T004647Z_8d7ec271/
+run_id=scheduled__2026-09-21T18_00_00_00_00/
+
+data/raw:
+_latest_run.json
+run_id=manual__2026-09-23T00_59_11_00_00/
+run_id=manual__2026-09-23T01_09_53_00_00/
+run_id=run_20260923T004647Z_8d7ec271/
+run_id=scheduled__2026-09-21T18_00_00_00_00/
+[exit code: 0]
+
+$ docker exec dss150p-postgres psql -U dss150p -d dss150p -c "SELECT COUNT(*) total, COUNT(DISTINCT order_id) distinct_orders FROM curated.sales_order_lines;"
+ total | distinct_orders 
+-------+-----------------
+ 49897 |           49897
+(1 row)
+
+
