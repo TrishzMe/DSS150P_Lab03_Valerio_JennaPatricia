@@ -1,0 +1,10 @@
+# Normalise text files to LF so scripts, SQL, and YAML behave the same inside
+# the Linux containers as on a Windows/macOS host.
+* text=auto eol=lf
+
+# Source snapshots are immutable inputs: store and check them out byte-for-byte
+# (customers.csv/orders.csv ship with CRLF endings) so SHA-256 checks stay valid.
+data/source/** -text
+
+*.png binary
+*.parquet binary
