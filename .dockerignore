@@ -1,0 +1,16 @@
+# Keep secrets, local environments, and generated data out of the image.
+# The Compose service bind-mounts the project at runtime instead.
+.env
+.venv/
+venv/
+.git/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+logs/
+data/raw/
+data/staging/
+data/curated/
+data/quarantine/
+data/partitioned/
+data/benchmarks/

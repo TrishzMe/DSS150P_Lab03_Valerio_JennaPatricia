@@ -1,0 +1,33 @@
+# Secrets and machine-local environment (never commit)
+.env
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Generated pipeline layers: reproducible from data/source via `python -m src.cli run-all`
+data/raw/
+data/staging/
+data/curated/
+data/quarantine/
+data/partitioned/
+
+# Benchmark materializations are large and regenerated; keep only the result tables
+data/benchmarks/*
+!data/benchmarks/benchmark_results.csv
+!data/benchmarks/benchmark_runs.csv
+!data/benchmarks/partition_read_results.csv
+!data/benchmarks/benchmark_environment.json
+!data/benchmarks/postgres_query_plans.txt
+
+# Airflow runtime output
+logs/
+
+# OS / editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
