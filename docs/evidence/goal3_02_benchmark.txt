@@ -1,0 +1,171 @@
+# Goal 3 / Tasks A-B - storage benchmark (same curated dataset, 1 warm-up + 5 timed runs, medians). Machine: Intel Core i7-8700 (6 cores / 12 threads, 3.2 GHz), 32 GB RAM, NVMe SSD (C:), Windows 11 Home 26200; Docker Desktop WSL2 VM with 12 CPUs / 15.6 GiB. Background apps left running: VS Code and Docker Desktop.
+# Captured 2026-09-23T00:47:19Z on Windows 11 (Git Bash, .venv active); PostgreSQL 16 in Docker
+
+$ python -m src.cli benchmark --repeats 5
+2026-09-23T00:47:20Z INFO [src.pipeline] stage=benchmark run_id=run_20260923T004647Z_8d7ec271 status=STARTED
+2026-09-23T00:48:13Z INFO [src.pipeline] stage=benchmark run_id=run_20260923T004647Z_8d7ec271 status=SUCCESS in 52.61s: 6 storage results (median of 5 runs) in data/benchmarks/benchmark_results.csv
+benchmark OK pipeline_run_id=run_20260923T004647Z_8d7ec271
+[exit code: 0]
+
+$ cat data/benchmarks/benchmark_results.csv
+storage_type,file_size_bytes,write_seconds,full_read_seconds,filtered_read_seconds,row_count,notes,filtered_row_count,repeats
+csv,14947641,1.04162,0.2507,0.257577,49897,row-oriented text; types re-inferred on read (timestamps come back as text),8355,5
+jsonl,30240963,1.002575,0.672752,0.694692,49897,one JSON object per line; every row repeats every column name,8355,5
+parquet,5467277,0.095771,0.047583,0.022328,49897,"columnar, snappy compression, schema and types stored in the file",8355,5
+csv_typed_read,14947641,,0.980037,,49897,variant: same CSV file read with explicit text ids and parsed UTC timestamps,,5
+postgresql,16310272,0.967367,1.43943,0.240865,49897,PostgreSQL 16.15 (Debian 16.15-1.pgdg13+2) in Docker; size = pg_total_relation_size (heap 14680064 + indexes 1589248 [primary key]); write = TRUNCATE + COPY from Python; reads fetch rows into pandas over TCP,8355,5
+postgresql_status_index,16678912,,,0.223499,,variant: same table after CREATE INDEX on status (368640 bytes); filtered query only,8355,5
+[exit code: 0]
+
+$ cat data/benchmarks/partition_read_results.csv
+scenario,files_read,bytes_in_files_read,median_seconds,rows,runs_seconds
+single_file_read_all_then_filter,1,5467277,0.045449,2506,0.044990;0.047170;0.048445;0.045449;0.043799
+single_file_with_predicate,1,5467277,0.017525,2506,0.017368;0.016698;0.017885;0.018078;0.017525
+partitioned_dataset_with_partition_filter,1,326209,0.011488,2506,0.012242;0.011037;0.011488;0.011676;0.010770
+single_partition_directory,1,326209,0.006075,2506,0.005949;0.006750;0.006328;0.006075;0.005806
+[exit code: 0]
+
+$ cat data/benchmarks/postgres_query_plans.txt
+-- SELECT order_id, customer_id, product_id, order_timestamp, customer_city, customer_tier, product_name, category, brand, quantity, unit_price, discount_pct, gross_amount, discount_amount, net_amount, status, source_updated_at, pipeline_run_id, processed_at_utc, record_hash FROM benchmark.sales_order_lines WHERE status = %s [DELIVERED], no index on status
+Seq Scan on sales_order_lines  (cost=0.00..2415.71 rows=8459 width=231) (actual time=0.008..6.789 rows=8355 loops=1)
+  Filter: (status = 'DELIVERED'::text)
+  Rows Removed by Filter: 41542
+  Buffers: shared hit=1792
+Planning Time: 0.046 ms
+Execution Time: 7.025 ms
+
+-- same query after CREATE INDEX ix_bench_sales_status ON benchmark.sales_order_lines (status)
+Bitmap Heap Scan on sales_order_lines  (cost=97.37..1994.35 rows=8398 width=231) (actual time=0.403..2.252 rows=8355 loops=1)
+  Recheck Cond: (status = 'DELIVERED'::text)
+  Heap Blocks: exact=1742
+  Buffers: shared hit=1751
+  ->  Bitmap Index Scan on ix_bench_sales_status  (cost=0.00..95.28 rows=8398 width=0) (actual time=0.258..0.258 rows=8355 loops=1)
+        Index Cond: (status = 'DELIVERED'::text)
+        Buffers: shared hit=9
+Planning Time: 0.059 ms
+Execution Time: 2.491 ms
+[exit code: 0]
+
+$ cat data/benchmarks/benchmark_environment.json
+{
+  "measured_at_utc": "2026-09-23T00:48:12.505624+00:00",
+  "execution_context": "host",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "processor": "Intel64 Family 6 Model 158 Stepping 10, GenuineIntel",
+  "logical_cpus": 12,
+  "python": "3.12.10",
+  "packages": {
+    "pandas": "2.2.3",
+    "pyarrow": "17.0.0",
+    "numpy": "2.1.3",
+    "psycopg": "3.2.3"
+  },
+  "dataset": {
+    "curated_file": "curated/run_id=run_20260923T004647Z_8d7ec271/sales_order_lines.parquet",
+    "rows": 49897,
+    "columns": 20,
+    "pipeline_run_id": [
+      "run_20260923T004647Z_8d7ec271"
+    ]
+  },
+  "method": {
+    "repeats": 5,
+    "warm_up_runs": 1,
+    "statistic": "median",
+    "filter": "status = 'DELIVERED'",
+    "parquet_compression": "snappy",
+    "note": "files are read after a warm-up, so they come from the OS page cache: timings measure parsing/decoding, not cold disk I/O"
+  },
+  "dtypes_after_full_read": {
+    "csv": {
+      "order_id": "object",
+      "order_timestamp": "object",
+      "quantity": "int64",
+      "unit_price": "float64",
+      "net_amount": "float64"
+    },
+    "jsonl": {
+      "order_id": "object",
+      "order_timestamp": "object",
+      "quantity": "int64",
+      "unit_price": "float64",
+      "net_amount": "float64"
+    },
+    "parquet": {
+      "order_id": "object",
+      "order_timestamp": "datetime64[ns, UTC]",
+      "quantity": "int64",
+      "unit_price": "float64",
+      "net_amount": "float64"
+    },
+    "csv_typed_read": {
+      "order_id": "object",
+      "order_timestamp": "datetime64[ns, UTC]",
+      "quantity": "int64",
+      "unit_price": "float64",
+      "net_amount": "float64"
+    },
+    "postgresql": {
+      "order_id": "object",
+      "order_timestamp": "datetime64[ns, Etc/UTC]",
+      "quantity": "int64",
+      "unit_price": "object",
+      "net_amount": "object"
+    }
+  },
+  "partition_read_experiment": {
+    "partition": "order_year=2026/order_month=1",
+    "partition_files_total": 21,
+    "single_file_row_groups": 1,
+    "results": [
+      {
+        "scenario": "single_file_read_all_then_filter",
+        "files_read": 1,
+        "bytes_in_files_read": 5467277,
+        "median_seconds": 0.045449,
+        "rows": 2506,
+        "runs_seconds": "0.044990;0.047170;0.048445;0.045449;0.043799"
+      },
+      {
+        "scenario": "single_file_with_predicate",
+        "files_read": 1,
+        "bytes_in_files_read": 5467277,
+        "median_seconds": 0.017525,
+        "rows": 2506,
+        "runs_seconds": "0.017368;0.016698;0.017885;0.018078;0.017525"
+      },
+      {
+        "scenario": "partitioned_dataset_with_partition_filter",
+        "files_read": 1,
+        "bytes_in_files_read": 326209,
+        "median_seconds": 0.011488,
+        "rows": 2506,
+        "runs_seconds": "0.012242;0.011037;0.011488;0.011676;0.010770"
+      },
+      {
+        "scenario": "single_partition_directory",
+        "files_read": 1,
+        "bytes_in_files_read": 326209,
+        "median_seconds": 0.006075,
+        "rows": 2506,
+        "runs_seconds": "0.005949;0.006750;0.006328;0.006075;0.005806"
+      }
+    ]
+  }
+}
+[exit code: 0]
+
+$ ls -l data/benchmarks/formats
+total 49476
+-rw-r--r-- 1 jenna 14947641 Sep 23 08:47 sales_order_lines.csv
+-rw-r--r-- 1 jenna 30240963 Sep 23 08:47 sales_order_lines.jsonl
+-rw-r--r-- 1 jenna  5467277 Sep 23 08:47 sales_order_lines.parquet
+[exit code: 0]
+
+$ docker exec dss150p-postgres psql -U dss150p -d dss150p -c "SELECT pg_size_pretty(pg_total_relation_size('benchmark.sales_order_lines')) total, pg_size_pretty(pg_relation_size('benchmark.sales_order_lines')) heap, pg_size_pretty(pg_indexes_size('benchmark.sales_order_lines')) indexes;"
+ total | heap  | indexes 
+-------+-------+---------
+ 16 MB | 14 MB | 1912 kB
+(1 row)
+
+

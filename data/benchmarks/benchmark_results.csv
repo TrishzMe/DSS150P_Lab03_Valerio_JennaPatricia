@@ -1,0 +1,7 @@
+storage_type,file_size_bytes,write_seconds,full_read_seconds,filtered_read_seconds,row_count,notes,filtered_row_count,repeats
+csv,14947641,1.04162,0.2507,0.257577,49897,row-oriented text; types re-inferred on read (timestamps come back as text),8355,5
+jsonl,30240963,1.002575,0.672752,0.694692,49897,one JSON object per line; every row repeats every column name,8355,5
+parquet,5467277,0.095771,0.047583,0.022328,49897,"columnar, snappy compression, schema and types stored in the file",8355,5
+csv_typed_read,14947641,,0.980037,,49897,variant: same CSV file read with explicit text ids and parsed UTC timestamps,,5
+postgresql,16310272,0.967367,1.43943,0.240865,49897,PostgreSQL 16.15 (Debian 16.15-1.pgdg13+2) in Docker; size = pg_total_relation_size (heap 14680064 + indexes 1589248 [primary key]); write = TRUNCATE + COPY from Python; reads fetch rows into pandas over TCP,8355,5
+postgresql_status_index,16678912,,,0.223499,,variant: same table after CREATE INDEX on status (368640 bytes); filtered query only,8355,5

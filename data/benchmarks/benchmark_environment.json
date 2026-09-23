@@ -1,0 +1,106 @@
+{
+  "measured_at_utc": "2026-09-23T00:48:12.505624+00:00",
+  "execution_context": "host",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "processor": "Intel64 Family 6 Model 158 Stepping 10, GenuineIntel",
+  "logical_cpus": 12,
+  "python": "3.12.10",
+  "packages": {
+    "pandas": "2.2.3",
+    "pyarrow": "17.0.0",
+    "numpy": "2.1.3",
+    "psycopg": "3.2.3"
+  },
+  "dataset": {
+    "curated_file": "curated/run_id=run_20260923T004647Z_8d7ec271/sales_order_lines.parquet",
+    "rows": 49897,
+    "columns": 20,
+    "pipeline_run_id": [
+      "run_20260923T004647Z_8d7ec271"
+    ]
+  },
+  "method": {
+    "repeats": 5,
+    "warm_up_runs": 1,
+    "statistic": "median",
+    "filter": "status = 'DELIVERED'",
+    "parquet_compression": "snappy",
+    "note": "files are read after a warm-up, so they come from the OS page cache: timings measure parsing/decoding, not cold disk I/O"
+  },
+  "dtypes_after_full_read": {
+    "csv": {
+      "order_id": "object",
+      "order_timestamp": "object",
+      "quantity": "int64",
+      "unit_price": "float64",
+      "net_amount": "float64"
+    },
+    "jsonl": {
+      "order_id": "object",
+      "order_timestamp": "object",
+      "quantity": "int64",
+      "unit_price": "float64",
+      "net_amount": "float64"
+    },
+    "parquet": {
+      "order_id": "object",
+      "order_timestamp": "datetime64[ns, UTC]",
+      "quantity": "int64",
+      "unit_price": "float64",
+      "net_amount": "float64"
+    },
+    "csv_typed_read": {
+      "order_id": "object",
+      "order_timestamp": "datetime64[ns, UTC]",
+      "quantity": "int64",
+      "unit_price": "float64",
+      "net_amount": "float64"
+    },
+    "postgresql": {
+      "order_id": "object",
+      "order_timestamp": "datetime64[ns, Etc/UTC]",
+      "quantity": "int64",
+      "unit_price": "object",
+      "net_amount": "object"
+    }
+  },
+  "partition_read_experiment": {
+    "partition": "order_year=2026/order_month=1",
+    "partition_files_total": 21,
+    "single_file_row_groups": 1,
+    "results": [
+      {
+        "scenario": "single_file_read_all_then_filter",
+        "files_read": 1,
+        "bytes_in_files_read": 5467277,
+        "median_seconds": 0.045449,
+        "rows": 2506,
+        "runs_seconds": "0.044990;0.047170;0.048445;0.045449;0.043799"
+      },
+      {
+        "scenario": "single_file_with_predicate",
+        "files_read": 1,
+        "bytes_in_files_read": 5467277,
+        "median_seconds": 0.017525,
+        "rows": 2506,
+        "runs_seconds": "0.017368;0.016698;0.017885;0.018078;0.017525"
+      },
+      {
+        "scenario": "partitioned_dataset_with_partition_filter",
+        "files_read": 1,
+        "bytes_in_files_read": 326209,
+        "median_seconds": 0.011488,
+        "rows": 2506,
+        "runs_seconds": "0.012242;0.011037;0.011488;0.011676;0.010770"
+      },
+      {
+        "scenario": "single_partition_directory",
+        "files_read": 1,
+        "bytes_in_files_read": 326209,
+        "median_seconds": 0.006075,
+        "rows": 2506,
+        "runs_seconds": "0.005949;0.006750;0.006328;0.006075;0.005806"
+      }
+    ]
+  }
+}
