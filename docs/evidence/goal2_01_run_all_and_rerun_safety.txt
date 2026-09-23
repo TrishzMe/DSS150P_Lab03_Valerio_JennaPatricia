@@ -1,0 +1,101 @@
+# Goal 2 / Task E - full pipeline, then two more loads (rerun safety). Clean start: generated data/ layers deleted and the PostgreSQL volume re-initialized (docker compose down -v; up -d postgres).
+# Captured 2026-09-23T00:34:44Z on Windows 11 (Git Bash, .venv active); PostgreSQL 16 in Docker
+
+$ sha256sum data/source/*   # before the run
+cd7617476ba9c29548941bafa453060f082707f60eb01335d023a9d46ba49212 *data/source/customers.csv
+f2de6cbd4ce9d3838401d3d6468accd40815c14bb6cb682f4340d897fd4338c3 *data/source/orders.csv
+18ba24bddd2a6f9e691ac720aae28e9c7b707dfb13bb6921a3ce2dbdfcb41047 *data/source/products.json
+[exit code: 0]
+
+$ python -m src.cli run-all
+2026-09-23T00:34:45Z INFO [src.pipeline] stage=extract run_id=run_20260923T003445Z_074f7638 status=STARTED
+2026-09-23T00:34:45Z INFO [src.pipeline] stage=extract run_id=run_20260923T003445Z_074f7638 status=SUCCESS in 0.14s: raw snapshot data/raw/run_id=run_20260923T003445Z_074f7638 (customers.csv=3003, products.json=601, orders.csv=50005 records)
+2026-09-23T00:34:45Z INFO [src.pipeline] stage=transform run_id=run_20260923T003445Z_074f7638 status=STARTED
+2026-09-23T00:34:47Z INFO [src.pipeline] stage=transform run_id=run_20260923T003445Z_074f7638 status=SUCCESS in 2.38s: staging customers=3000 products=599 orders=49998; curated=49897; quarantined=104
+2026-09-23T00:34:47Z INFO [src.pipeline] stage=load run_id=run_20260923T003445Z_074f7638 status=STARTED
+2026-09-23T00:34:50Z INFO [src.load.postgres] run_id=run_20260923T003445Z_074f7638 upsert into curated.sales_order_lines: inserted=49897 updated=0 unchanged=0
+2026-09-23T00:34:50Z INFO [src.pipeline] stage=load run_id=run_20260923T003445Z_074f7638 status=SUCCESS in 2.84s: curated.sales_order_lines upsert: 49897 written, 0 unchanged (record_hash match)
+2026-09-23T00:34:50Z INFO [src.pipeline] stage=validate run_id=run_20260923T003445Z_074f7638 status=STARTED
+2026-09-23T00:34:55Z INFO [src.pipeline] stage=validate run_id=run_20260923T003445Z_074f7638 status=SUCCESS in 5.20s: curated file and warehouse checks passed (full dataset)
+run-all OK pipeline_run_id=run_20260923T003445Z_074f7638
+[exit code: 0]
+
+$ python -m src.cli load
+2026-09-23T00:34:56Z INFO [src.pipeline] stage=load run_id=run_20260923T003445Z_074f7638 status=STARTED
+2026-09-23T00:34:59Z INFO [src.load.postgres] run_id=run_20260923T003445Z_074f7638 upsert into curated.sales_order_lines: inserted=0 updated=0 unchanged=49897
+2026-09-23T00:34:59Z INFO [src.pipeline] stage=load run_id=run_20260923T003445Z_074f7638 status=SUCCESS in 2.68s: curated.sales_order_lines upsert: 0 written, 49897 unchanged (record_hash match)
+load OK pipeline_run_id=run_20260923T003445Z_074f7638
+[exit code: 0]
+
+$ python -m src.cli load
+2026-09-23T00:35:00Z INFO [src.pipeline] stage=load run_id=run_20260923T003445Z_074f7638 status=STARTED
+2026-09-23T00:35:02Z INFO [src.load.postgres] run_id=run_20260923T003445Z_074f7638 upsert into curated.sales_order_lines: inserted=0 updated=0 unchanged=49897
+2026-09-23T00:35:03Z INFO [src.pipeline] stage=load run_id=run_20260923T003445Z_074f7638 status=SUCCESS in 2.65s: curated.sales_order_lines upsert: 0 written, 49897 unchanged (record_hash match)
+load OK pipeline_run_id=run_20260923T003445Z_074f7638
+[exit code: 0]
+
+$ docker exec dss150p-postgres psql -U dss150p -d dss150p -c "SELECT COUNT(*) total, COUNT(DISTINCT order_id) distinct_orders FROM curated.sales_order_lines;"
+ total | distinct_orders 
+-------+-----------------
+ 49897 |           49897
+(1 row)
+
+
+# A brand-new run (new pipeline_run_id, new processed_at_utc) over the same sources:
+$ python -m src.cli run-all
+2026-09-23T00:35:04Z INFO [src.pipeline] stage=extract run_id=run_20260923T003504Z_28480a5b status=STARTED
+2026-09-23T00:35:04Z INFO [src.pipeline] stage=extract run_id=run_20260923T003504Z_28480a5b status=SUCCESS in 0.14s: raw snapshot data/raw/run_id=run_20260923T003504Z_28480a5b (customers.csv=3003, products.json=601, orders.csv=50005 records)
+2026-09-23T00:35:04Z INFO [src.pipeline] stage=transform run_id=run_20260923T003504Z_28480a5b status=STARTED
+2026-09-23T00:35:06Z INFO [src.pipeline] stage=transform run_id=run_20260923T003504Z_28480a5b status=SUCCESS in 2.41s: staging customers=3000 products=599 orders=49998; curated=49897; quarantined=104
+2026-09-23T00:35:06Z INFO [src.pipeline] stage=load run_id=run_20260923T003504Z_28480a5b status=STARTED
+2026-09-23T00:35:09Z INFO [src.load.postgres] run_id=run_20260923T003504Z_28480a5b upsert into curated.sales_order_lines: inserted=0 updated=0 unchanged=49897
+2026-09-23T00:35:09Z INFO [src.pipeline] stage=load run_id=run_20260923T003504Z_28480a5b status=SUCCESS in 2.65s: curated.sales_order_lines upsert: 0 written, 49897 unchanged (record_hash match)
+2026-09-23T00:35:09Z INFO [src.pipeline] stage=validate run_id=run_20260923T003504Z_28480a5b status=STARTED
+2026-09-23T00:35:14Z INFO [src.pipeline] stage=validate run_id=run_20260923T003504Z_28480a5b status=SUCCESS in 5.00s: curated file and warehouse checks passed (full dataset)
+run-all OK pipeline_run_id=run_20260923T003504Z_28480a5b
+[exit code: 0]
+
+$ docker exec dss150p-postgres psql -U dss150p -d dss150p -c "SELECT COUNT(*) total, COUNT(DISTINCT order_id) distinct_orders FROM curated.sales_order_lines;"
+ total | distinct_orders 
+-------+-----------------
+ 49897 |           49897
+(1 row)
+
+
+$ docker exec dss150p-postgres psql -U dss150p -d dss150p -c "SELECT pipeline_run_id, COUNT(*) AS rows_last_written_by_run FROM curated.sales_order_lines GROUP BY 1;"
+        pipeline_run_id        | rows_last_written_by_run 
+-------------------------------+--------------------------
+ run_20260923T003445Z_074f7638 |                    49897
+(1 row)
+
+
+$ docker exec dss150p-postgres psql -U dss150p -d dss150p -c "SELECT stage_run_id, pipeline_run_id, stage, status, rows_in, rows_out, message FROM audit.stage_runs ORDER BY stage_run_id;"
+ stage_run_id |        pipeline_run_id        |   stage   | status  | rows_in | rows_out |                                                           message                                                            
+--------------+-------------------------------+-----------+---------+---------+----------+------------------------------------------------------------------------------------------------------------------------------
+            1 | run_20260923T003445Z_074f7638 | extract   | SUCCESS |         |    53609 | raw snapshot data/raw/run_id=run_20260923T003445Z_074f7638 (customers.csv=3003, products.json=601, orders.csv=50005 records)
+            2 | run_20260923T003445Z_074f7638 | transform | SUCCESS |   53609 |    49897 | staging customers=3000 products=599 orders=49998; curated=49897; quarantined=104
+            3 | run_20260923T003445Z_074f7638 | load      | SUCCESS |   49897 |    49897 | curated.sales_order_lines upsert: 49897 written, 0 unchanged (record_hash match)
+            4 | run_20260923T003445Z_074f7638 | validate  | SUCCESS |   49897 |          | curated file and warehouse checks passed (full dataset)
+            5 | run_20260923T003445Z_074f7638 | load      | SUCCESS |   49897 |        0 | curated.sales_order_lines upsert: 0 written, 49897 unchanged (record_hash match)
+            6 | run_20260923T003445Z_074f7638 | load      | SUCCESS |   49897 |        0 | curated.sales_order_lines upsert: 0 written, 49897 unchanged (record_hash match)
+            7 | run_20260923T003504Z_28480a5b | extract   | SUCCESS |         |    53609 | raw snapshot data/raw/run_id=run_20260923T003504Z_28480a5b (customers.csv=3003, products.json=601, orders.csv=50005 records)
+            8 | run_20260923T003504Z_28480a5b | transform | SUCCESS |   53609 |    49897 | staging customers=3000 products=599 orders=49998; curated=49897; quarantined=104
+            9 | run_20260923T003504Z_28480a5b | load      | SUCCESS |   49897 |        0 | curated.sales_order_lines upsert: 0 written, 49897 unchanged (record_hash match)
+           10 | run_20260923T003504Z_28480a5b | validate  | SUCCESS |   49897 |          | curated file and warehouse checks passed (full dataset)
+(10 rows)
+
+
+$ docker exec dss150p-postgres psql -U dss150p -d dss150p -c "SELECT pipeline_run_id, status, last_stage, rows_staging, rows_curated, rows_quarantined, started_at_utc, completed_at_utc FROM audit.pipeline_runs ORDER BY started_at_utc;"
+        pipeline_run_id        | status  | last_stage | rows_staging | rows_curated | rows_quarantined |        started_at_utc         |       completed_at_utc        
+-------------------------------+---------+------------+--------------+--------------+------------------+-------------------------------+-------------------------------
+ run_20260923T003445Z_074f7638 | SUCCESS | load       |        53597 |        49897 |              104 | 2026-09-23 00:34:45.016649+00 | 2026-09-23 00:35:02.985374+00
+ run_20260923T003504Z_28480a5b | SUCCESS | validate   |        53597 |        49897 |              104 | 2026-09-23 00:35:04.184324+00 | 2026-09-23 00:35:14.536349+00
+(2 rows)
+
+
+$ sha256sum data/source/*   # after both runs: unchanged
+cd7617476ba9c29548941bafa453060f082707f60eb01335d023a9d46ba49212 *data/source/customers.csv
+f2de6cbd4ce9d3838401d3d6468accd40815c14bb6cb682f4340d897fd4338c3 *data/source/orders.csv
+18ba24bddd2a6f9e691ac720aae28e9c7b707dfb13bb6921a3ce2dbdfcb41047 *data/source/products.json
+[exit code: 0]
+

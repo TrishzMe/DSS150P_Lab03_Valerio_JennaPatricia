@@ -1,0 +1,65 @@
+layer,column_name,data_type,nullable,description,source_field,transformation_rule
+staging.customers,customer_id,text,no,Customer business key,customers.csv:customer_id,trimmed; blank -> quarantined (missing_customer_id); latest updated_at kept per key
+staging.customers,first_name,text,yes,Given name,customers.csv:first_name,trimmed; blank -> null
+staging.customers,last_name,text,yes,Family name,customers.csv:last_name,trimmed; blank -> null
+staging.customers,email,text,yes,Contact email,customers.csv:email,"trimmed and lower-cased; blank -> null (kept, see is_email_missing)"
+staging.customers,is_email_missing,boolean,no,Visible quality condition: email absent in the source,derived from email,true when email is null; the record is not rejected
+staging.customers,city,text,yes,Customer city,customers.csv:city,"trimmed, inner whitespace collapsed, title-cased"
+staging.customers,customer_tier,text,yes,Loyalty tier as provided,customers.csv:customer_tier,trimmed only (the brief defines no allowed values)
+staging.customers,created_at,timestamptz (UTC),yes,Customer creation time,customers.csv:created_at,ISO-8601 parsed to UTC; present but unparseable -> quarantined (invalid_created_at)
+staging.customers,updated_at,timestamptz (UTC),no,Source version timestamp,customers.csv:updated_at,ISO-8601 parsed to UTC; missing/unparseable -> quarantined (invalid_updated_at); dedup order
+staging.products,product_id,text,no,Product business key,products.json:product_id,trimmed; latest updated_at kept per key
+staging.products,product_name,text,yes,Product name,products.json:name,trimmed
+staging.products,brand,text,yes,Brand,products.json:brand,trimmed
+staging.products,category_name,text,yes,Category,products.json:category.name,flattened from the nested category object
+staging.products,category_department,text,yes,Department,products.json:category.department,flattened from the nested category object
+staging.products,unit_price,float64,no,Catalog list price,products.json:unit_price,numeric; negative -> quarantined (negative_unit_price); missing/non-numeric -> invalid_unit_price
+staging.products,active,boolean,yes,Product active flag,products.json:active,JSON boolean kept; non-boolean -> null
+staging.products,updated_at,timestamptz (UTC),no,Source version timestamp,products.json:updated_at,ISO-8601 parsed to UTC; dedup order
+staging.orders,order_id,text,no,Order line business key,orders.csv:order_id,trimmed; latest updated_at kept per key
+staging.orders,customer_id,text,no,Customer reference,orders.csv:customer_id,blank -> quarantined (missing_customer_id)
+staging.orders,product_id,text,no,Product reference,orders.csv:product_id,blank -> quarantined (missing_product_id)
+staging.orders,order_timestamp,timestamptz (UTC),no,When the order was placed,orders.csv:order_timestamp,ISO-8601 parsed to UTC; invalid -> quarantined (invalid_order_timestamp)
+staging.orders,quantity,int64,no,Units ordered,orders.csv:quantity,whole number (invalid_quantity) within settings min_quantity..max_quantity = 1..20 (quantity_out_of_range)
+staging.orders,unit_price,float64,no,Transacted unit price,orders.csv:unit_price,numeric and >= 0 (invalid_unit_price)
+staging.orders,discount_pct,float64,no,Discount as a fraction,orders.csv:discount_pct,numeric in 0..1 (invalid_discount_pct)
+staging.orders,status,text,no,Order status,orders.csv:status,"trimmed, upper-cased; must be in settings allowed_order_statuses (invalid_status)"
+staging.orders,updated_at,timestamptz (UTC),no,Source version timestamp,orders.csv:updated_at,ISO-8601 parsed to UTC; dedup order
+staging.customers,source_record_number,int64,no,1-based position of the record in the raw file (lineage),raw snapshot,assigned before dedup
+staging.customers,pipeline_run_id,text,no,Run that produced the row,pipeline,"PIPELINE_RUN_ID from Airflow, else generated run_<UTC>_<uuid8>"
+staging.customers,staged_at_utc,timestamptz (UTC),no,When staging ran,pipeline,one UTC timestamp per staging build
+staging.products,source_record_number,int64,no,1-based position of the record in the raw file (lineage),raw snapshot,assigned before dedup
+staging.products,pipeline_run_id,text,no,Run that produced the row,pipeline,"PIPELINE_RUN_ID from Airflow, else generated run_<UTC>_<uuid8>"
+staging.products,staged_at_utc,timestamptz (UTC),no,When staging ran,pipeline,one UTC timestamp per staging build
+staging.orders,source_record_number,int64,no,1-based position of the record in the raw file (lineage),raw snapshot,assigned before dedup
+staging.orders,pipeline_run_id,text,no,Run that produced the row,pipeline,"PIPELINE_RUN_ID from Airflow, else generated run_<UTC>_<uuid8>"
+staging.orders,staged_at_utc,timestamptz (UTC),no,When staging ran,pipeline,one UTC timestamp per staging build
+curated.sales_order_lines,order_id,text,no,Primary key and UPSERT conflict key,staging.orders.order_id,one row per order line
+curated.sales_order_lines,customer_id,text,no,Customer reference,staging.orders.customer_id,"must exist in staging.customers, else quarantined (orphan_customer_id / customer_rejected_in_staging)"
+curated.sales_order_lines,product_id,text,no,Product reference,staging.orders.product_id,"must exist in staging.products, else quarantined (orphan_product_id / product_rejected_in_staging)"
+curated.sales_order_lines,order_timestamp,timestamptz,no,Order time (UTC),staging.orders.order_timestamp,as staged
+curated.sales_order_lines,customer_city,text,yes,Customer city at processing time,staging.customers.city,many-to-one join on customer_id
+curated.sales_order_lines,customer_tier,text,yes,Customer tier,staging.customers.customer_tier,many-to-one join on customer_id
+curated.sales_order_lines,product_name,text,yes,Product name,staging.products.product_name,many-to-one join on product_id
+curated.sales_order_lines,category,text,yes,Product category,staging.products.category_name,many-to-one join on product_id
+curated.sales_order_lines,brand,text,yes,Product brand,staging.products.brand,many-to-one join on product_id
+curated.sales_order_lines,quantity,integer,no,Units ordered,staging.orders.quantity,as staged (1..20)
+curated.sales_order_lines,unit_price,"numeric(14,2)",no,Transacted unit price,staging.orders.unit_price,rounded to the cent
+curated.sales_order_lines,discount_pct,"numeric(6,4)",no,Discount fraction,staging.orders.discount_pct,rounded to 4 decimals
+curated.sales_order_lines,gross_amount,"numeric(16,2)",no,Line value before discount,derived,"quantity * unit_price (integer cents, exact)"
+curated.sales_order_lines,discount_amount,"numeric(16,2)",no,Discount value,derived,gross_amount * discount_pct rounded half-up to the cent
+curated.sales_order_lines,net_amount,"numeric(16,2)",no,Line value after discount,derived,gross_amount - discount_amount
+curated.sales_order_lines,status,text,no,Order status,staging.orders.status,as staged
+curated.sales_order_lines,source_updated_at,timestamptz,no,Version of the source order record,staging.orders.updated_at,copied from the order (the grain record)
+curated.sales_order_lines,pipeline_run_id,text,no,Run that last wrote the row,pipeline,unchanged rows keep the run id of their last change (UPSERT skips an equal record_hash)
+curated.sales_order_lines,processed_at_utc,timestamptz,no,When the curated build ran,pipeline,one UTC timestamp per curated build
+curated.sales_order_lines,record_hash,text,no,SHA-256 of business content,derived,"canonicalized business columns only; excludes pipeline_run_id, processed_at_utc, record_hash"
+quarantine,pipeline_run_id,text,no,Run that rejected the record,pipeline,
+quarantine,quarantined_at_utc,timestamptz (UTC),no,When the record was rejected,pipeline,
+quarantine,layer,text,no,staging or curated,pipeline,staging = record-level rule; curated = cross-source reference rule
+quarantine,dataset,text,no,"customers, products, or orders",pipeline,
+quarantine,business_key,text,yes,Key of the rejected record,source key column,null only when the key itself was blank
+quarantine,source_record_number,int64,no,1-based position in the raw file,raw snapshot,traces back to the exact source record
+quarantine,reason_codes,text,no,"Machine-readable reasons, ;-separated",rules,"e.g. negative_unit_price, quantity_out_of_range, invalid_status, orphan_customer_id"
+quarantine,reason_detail,text,no,Human-readable explanation with the offending value,rules,
+quarantine,source_record,text (JSON),no,Original record as received (staging) or as staged (curated),raw snapshot / staging,kept so the record can be diagnosed and reprocessed

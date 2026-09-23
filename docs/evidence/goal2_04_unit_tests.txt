@@ -1,0 +1,29 @@
+# Goal 2 - unit tests (no database required)
+# Captured 2026-09-23T00:37:19Z on Windows 11 (Git Bash, .venv active); PostgreSQL 16 in Docker
+
+$ python -m pytest -v
+============================= test session starts =============================
+platform win32 -- Python 3.12.10, pytest-8.3.3, pluggy-1.6.0 -- C:\Users\jenna\Downloads\DSS150P_Lab03_Valerio_JennaPatricia\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\jenna\Downloads\DSS150P_Lab03_Valerio_JennaPatricia
+configfile: pytest.ini
+testpaths: tests
+collecting ... collected 13 items
+
+tests/test_extract_and_run_identity.py::test_extract_creates_run_specific_byte_identical_snapshot PASSED [  7%]
+tests/test_extract_and_run_identity.py::test_extract_fails_cleanly_when_a_source_is_missing PASSED [ 15%]
+tests/test_extract_and_run_identity.py::test_run_folder_is_filesystem_safe_for_airflow_run_ids PASSED [ 23%]
+tests/test_transform_rules.py::test_customers_keep_latest_version_and_normalize_text PASSED [ 30%]
+tests/test_transform_rules.py::test_products_flatten_category_and_quarantine_negative_or_invalid_price PASSED [ 38%]
+tests/test_transform_rules.py::test_orders_quarantine_technical_defects_with_reasons_and_parse_utc PASSED [ 46%]
+tests/test_transform_rules.py::test_orders_dedup_is_deterministic_and_validates_the_latest_version PASSED [ 53%]
+tests/test_transform_rules.py::test_curated_amounts_and_orphans_are_quarantined_not_dropped PASSED [ 61%]
+tests/test_transform_rules.py::test_record_hash_ignores_run_metadata_but_tracks_business_content PASSED [ 69%]
+tests/test_transform_rules.py::test_validate_curated_accepts_valid_rows_and_detects_violations PASSED [ 76%]
+tests/test_transform_rules.py::test_validate_curated_reports_missing_columns[order_id] PASSED [ 84%]
+tests/test_transform_rules.py::test_validate_curated_reports_missing_columns[record_hash] PASSED [ 92%]
+tests/test_transform_rules.py::test_validate_curated_reports_missing_columns[net_amount] PASSED [100%]
+
+============================= 13 passed in 1.33s ==============================
+[exit code: 0]
+
