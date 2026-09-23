@@ -11,9 +11,9 @@ import time
 
 import pandas as pd
 
+from src.benchmark.storage import read_partition, run_benchmark, write_partitioned_parquet
 from src.common.audit import env_run_id, new_run_id, utc_now_iso
 from src.common.errors import DataValidationError, PipelineStageError
-from src.benchmark.storage import read_partition, run_benchmark, write_partitioned_parquet
 from src.common.layers import latest_run_id, mark_latest, read_json, relative, run_dir, write_json, write_parquet
 from src.config import path_for
 from src.extract.files import MANIFEST, extract_sources
