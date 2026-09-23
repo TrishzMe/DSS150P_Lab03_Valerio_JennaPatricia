@@ -1,8 +1,7 @@
-# DSS150P Laboratory Activity #3: Productionizing a Modular Data Pipeline
+# DSS150P Laboratory Activity #3
 
 **Student:** Jenna Patricia Valerio
 **Student Number:** 2024102708
-**Course:** DSS150P, Fundamentals of Data Engineering
 **Starter package:** [jrnmapanao/dss150p-lab03-starter](https://github.com/jrnmapanao/dss150p-lab03-starter)
 
 This repository turns the starter's ad hoc pipeline into a reproducible, modular, containerized
