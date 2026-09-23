@@ -86,7 +86,7 @@ python -m src.cli load
 docker exec -it dss150p-postgres psql -U dss150p -d dss150p -c "SELECT COUNT(*) total, COUNT(DISTINCT order_id) distinct_orders FROM curated.sales_order_lines;"
 python -m src.cli validate     # curated file + warehouse + audit-trail checks
 python scripts/inspect_layers.py   # read-only report: layer counts, duplicates, quarantine, audit columns
-python -m pytest               # 13 unit tests, no database needed
+python -m pytest               # 16 unit tests, no database needed
 ```
 
 Individual stages: `extract`, `transform [--run-id]`, `load [--run-id]`, `validate [--run-id]`.
