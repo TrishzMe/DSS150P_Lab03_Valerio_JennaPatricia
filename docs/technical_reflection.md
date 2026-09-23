@@ -120,8 +120,8 @@ when running a step twice has the same effect as running it once.
 Example of damage: suppose `load` used a plain `INSERT INTO curated.sales_order_lines` without a key.
 The attempt inserts all 49,897 rows and commits, then loses its connection before reporting success.
 Airflow marks the attempt failed and retries: 99,794 rows. With `retries=2`, up to 149,691 rows, and
-every revenue total triples. The same happens with appending to a partition folder, or with a
-watermark advanced before the write (Lab 2).
+every revenue total triples. The same happens with appending to a partition folder, or with an
+incremental watermark that is advanced before the data it covers has been written.
 
 In this pipeline, each retry of the failure drill either created nothing (extract fails before
 copying) or would find the same rows (UPSERT on `order_id` + hash skip). Airflow's retries are
@@ -147,7 +147,7 @@ in the raw layer.
 - **API:** paginate until `has_more` is false, with a timeout and `raise_for_status`, backing off on
   rate limits (429/`Retry-After`). Write each page response as-is to `data/raw/run_id=<run>/`, for
   example as JSON Lines. Keep a watermark (`updated_after`) that advances only *after* the raw write
-  succeeds, as in Lab 2, and dedup by business key plus `updated_at`, which staging already does.
+  succeeds, and dedup by business key plus `updated_at`, which staging already does.
 - **Database:** extract with bounded, indexed queries on `updated_at > watermark`, or better, CDC
   (logical replication), from a read replica so the OLTP system is not loaded. Use a consistent
   snapshot (`REPEATABLE READ`) so the three tables agree with each other.

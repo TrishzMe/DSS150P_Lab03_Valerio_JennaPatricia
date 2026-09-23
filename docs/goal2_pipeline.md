@@ -16,8 +16,8 @@ Evidence transcripts:
 | Curated | `data/curated/run_id=<run>/sales_order_lines.parquet` + `_run_summary.json` | Parquet | cross-source join, monetary measures, audit columns; loaded to `curated.sales_order_lines` |
 | Quarantine | `data/quarantine/run_id=<run>/quarantine.parquet` | Parquet | every rejected record with `layer`, `dataset`, `business_key`, `source_record_number`, `reason_codes`, `reason_detail`, and the original `source_record` (JSON) |
 
-Every run writes its own folders, so a rerun never overwrites an earlier run's raw copy or outputs.
-Lab 2 lost points because a changed file overwrote its earlier raw copy; this layout avoids that.
+Every run writes its own folders, so a rerun never overwrites an earlier run's raw copy or outputs,
+and each raw copy stays exactly as that run received it.
 `data/<layer>/_latest_run.json` points to the newest completed run, which is how `load` and
 `validate` work without a run id.
 
@@ -126,8 +126,7 @@ The unique counts match the instructor's `docs/source_manifest.json` (3000 / 600
   (`StageTerminated`).
 - Audit writes are best effort. If PostgreSQL itself is down, the stage logs a warning and the
   *original* error still fails the command (goal2_03 C). The audit problem does not replace it.
-  This addresses the Lab 2 feedback that some failures bypassed the run log: every failure path
-  now goes through `run_stage()`.
+  Every failure path goes through `run_stage()`, so no failure can bypass the run history.
 - Nothing half-written is left behind. Extract writes into a `.partial` folder and renames it into
   place only after verifying the hashes. Parquet and JSON files are written to a temporary file and
   then atomically replaced.
@@ -184,4 +183,4 @@ It also checks the **audit trail**:
 - a successful load is recorded in `audit.stage_runs`;
 - no stage attempt of the run is still `RUNNING`.
 
-Lab 2 lost points because validation did not check the run log; this closes that gap.
+The operational history is validated as well as the data.

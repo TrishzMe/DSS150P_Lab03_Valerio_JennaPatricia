@@ -23,8 +23,7 @@ the commit history (`Co-Authored-By` lines).
 
 ## My own contribution and responsibility
 
-- I directed the work: I supplied the lab materials, my Lab 1 and Lab 2 feedback, and decided on
-  scope and approach. The design choices, including the P0078 quarantine decision, the UTC/Manila
+- I directed the work: I supplied the laboratory materials and decided on scope and approach. The design choices, including the P0078 quarantine decision, the UTC/Manila
   schedule, and the audit tables, were reviewed and accepted by me.
 - I have read the submitted code and documents and can explain and modify every part of them, as
   the course policy requires. I accept full responsibility for the correctness of this submission.

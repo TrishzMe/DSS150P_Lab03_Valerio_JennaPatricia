@@ -201,7 +201,7 @@ See [docs/goal1_environment.md](docs/goal1_environment.md).
 | Symptom | Fix |
 |---|---|
 | `Set POSTGRES_PASSWORD in .env` from Compose | `cp .env.example .env` and set a password |
-| `container name "/dss150p-postgres" is already in use` | another lab's container uses the same name: `docker rm dss150p-postgres` (its named volume and data are kept) |
+| `container name "/dss150p-postgres" is already in use` | another container already uses that name: stop or remove it (`docker rm dss150p-postgres` keeps its named volume and data) |
 | Port 5432 already in use | set `POSTGRES_PORT=5433` in `.env`; host commands follow it and containers keep using 5432 internally |
 | Password changed after first start | the volume keeps the original password: `docker compose down -v` to re-initialize (**deletes lab data**) |
 | `relation "audit.stage_runs" does not exist` or `column "load_count" ... does not exist` | the volume was initialized before `sql/init/02_audit_schema.sql`/`03_partition_audit.sql` existed: pipe each file into `docker exec -i dss150p-postgres psql -U dss150p -d dss150p < sql/init/<file>` (both are idempotent) |
