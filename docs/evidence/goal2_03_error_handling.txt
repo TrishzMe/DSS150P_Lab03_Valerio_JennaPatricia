@@ -1,0 +1,142 @@
+# Goal 2 / Task D - error handling: every failure names its stage and run, is recorded, and leaves no partial output
+# Captured 2026-09-23T00:36:22Z on Windows 11 (Git Bash, .venv active); PostgreSQL 16 in Docker
+
+## A. Source missing (PIPELINE_SOURCE_DIR set only for this command; nothing committed or renamed)
+$ PIPELINE_SOURCE_DIR=data/does_not_exist python -m src.cli run-all
+2026-09-23T00:36:23Z INFO [src.pipeline] stage=extract run_id=run_20260923T003623Z_3b1f127c status=STARTED
+2026-09-23T00:36:23Z ERROR [src.pipeline] stage=extract run_id=run_20260923T003623Z_3b1f127c status=FAILED after 0.00s
+Traceback (most recent call last):
+  File "C:\Users\jenna\Downloads\DSS150P_Lab03_Valerio_JennaPatricia\src\pipeline.py", line 45, in run_stage
+    result = func(run_id, *args)
+             ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\jenna\Downloads\DSS150P_Lab03_Valerio_JennaPatricia\src\pipeline.py", line 69, in extract
+    raw_dir = extract_sources(run_id)
+              ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\jenna\Downloads\DSS150P_Lab03_Valerio_JennaPatricia\src\extract\files.py", line 44, in extract_sources
+    raise FileNotFoundError(f'source file(s) not found: {", ".join(missing)} (source_dir={relative(source_dir)})')
+FileNotFoundError: source file(s) not found: data/does_not_exist/customers.csv, data/does_not_exist/products.json, data/does_not_exist/orders.csv (source_dir=data/does_not_exist)
+2026-09-23T00:36:23Z ERROR [src.cli] stage "extract" failed for pipeline_run_id=run_20260923T003623Z_3b1f127c: FileNotFoundError: source file(s) not found: data/does_not_exist/customers.csv, data/does_not_exist/products.json, data/does_not_exist/orders.csv (source_dir=data/does_not_exist)
+[exit code: 1]
+
+$ ls data/raw   # no partial snapshot was created for the failed run
+_latest_run.json
+run_id=run_20260923T003445Z_074f7638/
+run_id=run_20260923T003504Z_28480a5b/
+[exit code: 0]
+
+$ docker exec dss150p-postgres psql -U dss150p -d dss150p -c "SELECT stage_run_id, pipeline_run_id, stage, status, message FROM audit.stage_runs WHERE status = 'FAILED';"
+ stage_run_id |        pipeline_run_id        |  stage  | status |                                                                                      message                                                                                       
+--------------+-------------------------------+---------+--------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+           11 | run_20260923T003623Z_3b1f127c | extract | FAILED | FileNotFoundError: source file(s) not found: data/does_not_exist/customers.csv, data/does_not_exist/products.json, data/does_not_exist/orders.csv (source_dir=data/does_not_exist)
+(1 row)
+
+
+$ docker exec dss150p-postgres psql -U dss150p -d dss150p -c "SELECT pipeline_run_id, status, last_stage, message FROM audit.pipeline_runs WHERE status = 'FAILED';"
+        pipeline_run_id        | status | last_stage |                                                                                           message                                                                                           
+-------------------------------+--------+------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ run_20260923T003623Z_3b1f127c | FAILED | extract    | extract: FileNotFoundError: source file(s) not found: data/does_not_exist/customers.csv, data/does_not_exist/products.json, data/does_not_exist/orders.csv (source_dir=data/does_not_exist)
+(1 row)
+
+
+## B. Transform for a run that was never extracted
+$ python -m src.cli transform --run-id run_never_extracted
+2026-09-23T00:36:24Z INFO [src.pipeline] stage=transform run_id=run_never_extracted status=STARTED
+2026-09-23T00:36:24Z ERROR [src.pipeline] stage=transform run_id=run_never_extracted status=FAILED after 0.00s
+Traceback (most recent call last):
+  File "C:\Users\jenna\Downloads\DSS150P_Lab03_Valerio_JennaPatricia\src\pipeline.py", line 45, in run_stage
+    result = func(run_id, *args)
+             ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\jenna\Downloads\DSS150P_Lab03_Valerio_JennaPatricia\src\pipeline.py", line 80, in transform
+    raise FileNotFoundError(f'no raw snapshot for this run at {relative(raw_dir)}; run extract first')
+FileNotFoundError: no raw snapshot for this run at data/raw/run_id=run_never_extracted; run extract first
+2026-09-23T00:36:24Z ERROR [src.cli] stage "transform" failed for pipeline_run_id=run_never_extracted: FileNotFoundError: no raw snapshot for this run at data/raw/run_id=run_never_extracted; run extract first
+[exit code: 1]
+
+## C. PostgreSQL unavailable during load (system failure, not a data problem)
+$ docker compose stop postgres
+ Container dss150p-postgres Stopping 
+ Container dss150p-postgres Stopped 
+[exit code: 0]
+
+$ python -m src.cli load
+2026-09-23T00:36:26Z INFO [src.pipeline] stage=load run_id=run_20260923T003504Z_28480a5b status=STARTED
+2026-09-23T00:36:30Z WARNING [src.load.run_audit] audit unavailable, stage load start not recorded: connection failed: connection to server at "127.0.0.1", port 5432 failed: could not receive data from server: Socket is not connected (0x00002749/10057)
+could not send SSL negotiation packet: Socket is not connected (0x00002749/10057)
+2026-09-23T00:36:36Z ERROR [src.pipeline] stage=load run_id=run_20260923T003504Z_28480a5b status=FAILED after 5.74s
+Traceback (most recent call last):
+  File "C:\Users\jenna\Downloads\DSS150P_Lab03_Valerio_JennaPatricia\src\pipeline.py", line 45, in run_stage
+    result = func(run_id, *args)
+             ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\jenna\Downloads\DSS150P_Lab03_Valerio_JennaPatricia\src\pipeline.py", line 112, in load
+    written = upsert_curated(curated, run_id)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\jenna\Downloads\DSS150P_Lab03_Valerio_JennaPatricia\src\load\postgres.py", line 33, in upsert_curated
+    with connect() as conn:
+         ^^^^^^^^^
+  File "C:\Users\jenna\Downloads\DSS150P_Lab03_Valerio_JennaPatricia\src\load\db.py", line 13, in connect
+    return psycopg.connect(**db_params())
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\jenna\Downloads\DSS150P_Lab03_Valerio_JennaPatricia\.venv\Lib\site-packages\psycopg\connection.py", line 119, in connect
+    raise last_ex.with_traceback(None)
+psycopg.OperationalError: connection failed: connection to server at "127.0.0.1", port 5432 failed: could not receive data from server: Socket is not connected (0x00002749/10057)
+could not send SSL negotiation packet: Socket is not connected (0x00002749/10057)
+2026-09-23T00:36:40Z WARNING [src.load.run_audit] audit unavailable, stage load FAILED not recorded: connection failed: connection to server at "127.0.0.1", port 5432 failed: could not receive data from server: Socket is not connected (0x00002749/10057)
+could not send SSL negotiation packet: Socket is not connected (0x00002749/10057)
+2026-09-23T00:36:40Z ERROR [src.cli] stage "load" failed for pipeline_run_id=run_20260923T003504Z_28480a5b: OperationalError: connection failed: connection to server at "127.0.0.1", port 5432 failed: could not receive data from server: Socket is not connected (0x00002749/10057)
+could not send SSL negotiation packet: Socket is not connected (0x00002749/10057)
+[exit code: 1]
+
+$ docker compose start postgres && sleep 8 && docker compose ps --format '{{.Name}} {{.Status}}'
+ Container dss150p-postgres Starting 
+ Container dss150p-postgres Started 
+dss150p-postgres Up 8 seconds (healthy)
+[exit code: 0]
+
+$ python -m src.cli load
+2026-09-23T00:36:50Z INFO [src.pipeline] stage=load run_id=run_20260923T003504Z_28480a5b status=STARTED
+2026-09-23T00:36:53Z INFO [src.load.postgres] run_id=run_20260923T003504Z_28480a5b upsert into curated.sales_order_lines: inserted=0 updated=0 unchanged=49897
+2026-09-23T00:36:53Z INFO [src.pipeline] stage=load run_id=run_20260923T003504Z_28480a5b status=SUCCESS in 2.73s: curated.sales_order_lines upsert: 0 written, 49897 unchanged (record_hash match)
+load OK pipeline_run_id=run_20260923T003504Z_28480a5b
+[exit code: 0]
+
+# The audit write during the outage was best effort: the stage logged a WARNING and the
+# original OperationalError (not an audit error) is what failed the command.
+
+## D. Validation catches warehouse drift; the hash-aware UPSERT repairs only the drifted row
+# Simulated drift: one warehouse row no longer matches the curated output.
+$ docker exec dss150p-postgres psql -U dss150p -d dss150p -c "UPDATE curated.sales_order_lines SET status = 'LOST', net_amount = -1, record_hash = repeat('0', 64) WHERE order_id = 'O0000001';"
+UPDATE 1
+
+$ python -m src.cli validate
+2026-09-23T00:36:54Z INFO [src.pipeline] stage=validate run_id=run_20260923T003504Z_28480a5b status=STARTED
+2026-09-23T00:36:59Z ERROR [src.pipeline] stage=validate run_id=run_20260923T003504Z_28480a5b status=FAILED after 5.06s
+Traceback (most recent call last):
+  File "C:\Users\jenna\Downloads\DSS150P_Lab03_Valerio_JennaPatricia\src\pipeline.py", line 45, in run_stage
+    result = func(run_id, *args)
+             ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\jenna\Downloads\DSS150P_Lab03_Valerio_JennaPatricia\src\pipeline.py", line 124, in validate
+    raise DataValidationError(errors)
+src.common.errors.DataValidationError: 3 validation error(s): curated.sales_order_lines: 1 row(s) violate quantity/amount/status/hash rules | curated.sales_order_lines: 1 row(s) hold different business content than this run | curated.sales_order_lines: 1 row(s) whose record_hash does not match the stored columns
+2026-09-23T00:36:59Z ERROR [src.cli] stage "validate" failed for pipeline_run_id=run_20260923T003504Z_28480a5b: DataValidationError: 3 validation error(s): curated.sales_order_lines: 1 row(s) violate quantity/amount/status/hash rules | curated.sales_order_lines: 1 row(s) hold different business content than this run | curated.sales_order_lines: 1 row(s) whose record_hash does not match the stored columns
+[exit code: 1]
+
+$ python -m src.cli load
+2026-09-23T00:37:00Z INFO [src.pipeline] stage=load run_id=run_20260923T003504Z_28480a5b status=STARTED
+2026-09-23T00:37:03Z INFO [src.load.postgres] run_id=run_20260923T003504Z_28480a5b upsert into curated.sales_order_lines: inserted=0 updated=1 unchanged=49896
+2026-09-23T00:37:03Z INFO [src.pipeline] stage=load run_id=run_20260923T003504Z_28480a5b status=SUCCESS in 2.86s: curated.sales_order_lines upsert: 1 written, 49896 unchanged (record_hash match)
+load OK pipeline_run_id=run_20260923T003504Z_28480a5b
+[exit code: 0]
+
+$ python -m src.cli validate
+2026-09-23T00:37:04Z INFO [src.pipeline] stage=validate run_id=run_20260923T003504Z_28480a5b status=STARTED
+2026-09-23T00:37:09Z INFO [src.pipeline] stage=validate run_id=run_20260923T003504Z_28480a5b status=SUCCESS in 5.13s: curated file and warehouse checks passed (full dataset)
+validate OK pipeline_run_id=run_20260923T003504Z_28480a5b
+[exit code: 0]
+
+$ docker exec dss150p-postgres psql -U dss150p -d dss150p -c "SELECT order_id, status, net_amount, left(record_hash, 16) AS record_hash_prefix FROM curated.sales_order_lines WHERE order_id = 'O0000001';"
+ order_id | status  | net_amount | record_hash_prefix 
+----------+---------+------------+--------------------
+ O0000001 | SHIPPED |  432861.75 | da03bbe6112fec70
+(1 row)
+
+

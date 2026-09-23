@@ -1,0 +1,162 @@
+# Goal 2 - raw/staging/curated/quarantine counts, duplicate resolution, quarantine reasons, audit columns
+# Captured 2026-09-23T00:36:09Z on Windows 11 (Git Bash, .venv active); PostgreSQL 16 in Docker
+
+$ python scripts/inspect_layers.py
+pipeline_run_id: run_20260923T003504Z_28480a5b
+
+== 1. Raw snapshot vs. data/source (byte-identical copies) ==
+customers.csv  records=  3003 bytes=   351125 sha256=cd7617476ba9c295... matches source: True
+products.json  records=   601 bytes=   160497 sha256=18ba24bddd2a6f9e... matches source: True
+orders.csv     records= 50005 bytes=  4856331 sha256=f2de6cbd4ce9d383... matches source: True
+
+== 2. Row counts per layer ==
+  dataset   raw  staging  staging_quarantine  superseded_duplicates
+customers  3003     3000                   0                      3
+ products   601      599                   1                      1
+   orders 50005    49998                   2                      5
+curated: orders in=49998  sales_order_lines=49897  curated_quarantine=101  in PostgreSQL=49897
+
+quarantine by layer/dataset/reason:
+layer    dataset   reason_codes               
+curated  orders    orphan_customer_id              1
+                   orphan_product_id               1
+                   product_rejected_in_staging    99
+staging  orders    invalid_status                  1
+                   quantity_out_of_range           1
+         products  negative_unit_price             1
+
+== 3. Duplicate business keys: every raw version and the one kept ==
+-- customers (3 keys, 6 versions)
+customer_id                updated_at                              email  kept
+     C00120 2025-03-01T08:13:00+00:00       paolo.pascual120@example.com False
+     C00120 2025-03-03T08:13:00+00:00       PAOLO.PASCUAL120@EXAMPLE.COM  True
+     C01250 2025-04-09T03:18:00+00:00 queenie.villanueva1250@example.com False
+     C01250 2025-04-11T03:18:00+00:00 QUEENIE.VILLANUEVA1250@EXAMPLE.COM  True
+     C02600 2026-03-10T03:36:00+00:00       sofia.torres2600@example.com False
+     C02600 2026-03-12T03:36:00+00:00       SOFIA.TORRES2600@EXAMPLE.COM  True
+-- products (1 keys, 2 versions)
+product_id                updated_at                 name  kept
+     P0300 2024-03-21T00:00:00+00:00      Nova Tablet 300 False
+     P0300 2024-03-24T00:00:00+00:00 Nova Tablet 300 Rev2  True
+-- orders (5 keys, 10 versions)
+order_id                updated_at    status  kept
+O0000100 2025-03-15T02:59:00+00:00 CANCELLED False
+O0000100 2025-03-16T02:59:00+00:00 DELIVERED  True
+O0002500 2026-02-14T22:13:00+00:00   PENDING False
+O0002500 2026-02-15T22:13:00+00:00 DELIVERED  True
+O0010000 2025-05-07T21:09:00+00:00 DELIVERED False
+O0010000 2025-05-08T21:09:00+00:00 DELIVERED  True
+O0022222 2025-04-14T14:49:00+00:00   PENDING False
+O0022222 2025-04-15T14:49:00+00:00 DELIVERED  True
+O0049900 2026-04-28T02:49:00+00:00      PAID False
+O0049900 2026-04-29T02:49:00+00:00 DELIVERED  True
+
+== 4. Missing email kept as a visible quality condition ==
+customer_id first_name last_name email  is_email_missing      city
+     C00025     Yasmin    Torres  None              True    Manila
+     C00412      Grace  Castillo  None              True     Pasig
+     C01201      Tomas   Pascual  None              True     Pasig
+     C02334      Julia     Reyes  None              True Parañaque
+
+== 5. Quarantine records (all staging rejects + orphan examples) ==
+[staging/products] key=P0078 record#78 reason=negative_unit_price
+    detail: unit_price=-199.0 is negative
+    source: {"product_id": "P0078", "name": "Nova Networking 078", "category": {"name": "Networking", "department": "Computing"}, "brand": "Nova", "unit_price": -199.0, "active": true, "updated_at": "2025-07-29T00:00:00+00:00"}
+[staging/orders] key=O0000112 record#112 reason=quantity_out_of_range
+    detail: quantity='0' outside allowed range 1..20
+    source: {"order_id": "O0000112", "customer_id": "C02709", "product_id": "P0344", "order_timestamp": "2025-11-08T06:39:00+00:00", "quantity": "0", "unit_price": "2785.93", "discount_pct": "0.05", "status": "PACKED", "updated_at": "2025-11-11T06:39:00+00:00"}
+[staging/orders] key=O0004445 record#4445 reason=invalid_status
+    detail: status='UNKNOWN' is not an allowed status
+    source: {"order_id": "O0004445", "customer_id": "C00645", "product_id": "P0394", "order_timestamp": "2026-07-13T05:22:00+00:00", "quantity": "4", "unit_price": "5199.2", "discount_pct": "0.1", "status": "UNKNOWN", "updated_at": "2026-07-13T05:22:00+00:00"}
+[curated/orders] key=O0000204 record#204 reason=product_rejected_in_staging
+    detail: product_id P0078 exists in the source but was quarantined in staging (negative_unit_price)
+    source: {"order_id": "O0000204", "customer_id": "C00912", "product_id": "P0078", "order_timestamp": "2025-06-01T19:42:00+00:00", "quantity": 7, "unit_price": 669.78, "discount_pct": 0.15, "status": "DELIVERED", "updated_at": "2025-06-02T18:42:00+00:00"}
+[curated/orders] key=O0002223 record#2223 reason=orphan_customer_id
+    detail: customer_id C99999 not found in staging customers
+    source: {"order_id": "O0002223", "customer_id": "C99999", "product_id": "P0525", "order_timestamp": "2026-03-30T23:12:00+00:00", "quantity": 2, "unit_price": 36457.69, "discount_pct": 0.05, "status": "CANCELLED", "updated_at": "2026-03-31T17:12:00+00:00"}
+[curated/orders] key=O0003334 record#3334 reason=orphan_product_id
+    detail: product_id P9999 not found in staging products
+    source: {"order_id": "O0003334", "customer_id": "C02952", "product_id": "P9999", "order_timestamp": "2025-12-15T13:19:00+00:00", "quantity": 7, "unit_price": 10488.44, "discount_pct": 0.15, "status": "PENDING", "updated_at": "2025-12-16T17:19:00+00:00"}
+
+== 6. Curated audit columns (sample from PostgreSQL) ==
+                                                                                  0                                                                 1                                                                 2                                                                 3
+order_id                                                                   O0000001                                                          O0000002                                                          O0000100                                                          O0022222
+quantity                                                                          5                                                                 6                                                                 2                                                                 2
+unit_price                                                                 86572.35                                                           8062.51                                                          11197.74                                                          50143.28
+discount_pct                                                                 0.0000                                                            0.1000                                                            0.1500                                                            0.0000
+gross_amount                                                              432861.75                                                          48375.06                                                          22395.48                                                         100286.56
+discount_amount                                                                0.00                                                           4837.51                                                           3359.32                                                              0.00
+net_amount                                                                432861.75                                                          43537.55                                                          19036.16                                                         100286.56
+status                                                                      SHIPPED                                                         CANCELLED                                                         DELIVERED                                                         DELIVERED
+source_updated_at                                         2026-05-07 04:22:00+00:00                                         2026-08-16 21:31:00+00:00                                         2025-03-16 02:59:00+00:00                                         2025-04-15 14:49:00+00:00
+pipeline_run_id                                       run_20260923T003445Z_074f7638                                     run_20260923T003445Z_074f7638                                     run_20260923T003445Z_074f7638                                     run_20260923T003445Z_074f7638
+processed_at_utc                                   2026-09-23 00:34:45.922754+00:00                                  2026-09-23 00:34:45.922754+00:00                                  2026-09-23 00:34:45.922754+00:00                                  2026-09-23 00:34:45.922754+00:00
+record_hash        da03bbe6112fec704a409838fa3b710eaea380620685121c58f6ffdd3401a75c  40d6b867b871224253ddca66608a3a9a9bf0a8a5c231bbf685cf817c0288cb43  da99c7442e65e5ab8a6ca17d1456d7224ae7bba6aa6570c2dd41ff93d8045118  f9754bc0c58afe8969a3b9fc0a60c29724c9b6b6fa5487daf7c27636aa879e1f
+[exit code: 0]
+
+$ cat "data/curated/$(ls data/curated | grep run_id= | tail -1)/_run_summary.json"
+{
+  "pipeline_run_id": "run_20260923T003504Z_28480a5b",
+  "summarized_at_utc": "2026-09-23T00:35:06.797974+00:00",
+  "staging": {
+    "customers": {
+      "raw": 3003,
+      "staged": 3000,
+      "quarantined": 0,
+      "superseded_duplicates": 3,
+      "email_missing": 4
+    },
+    "products": {
+      "raw": 601,
+      "staged": 599,
+      "quarantined": 1,
+      "superseded_duplicates": 1
+    },
+    "orders": {
+      "raw": 50005,
+      "staged": 49998,
+      "quarantined": 2,
+      "superseded_duplicates": 5
+    }
+  },
+  "curated": {
+    "input_orders": 49998,
+    "sales_order_lines": 49897,
+    "quarantined": 101
+  },
+  "quarantine_reasons": {
+    "staging/orders/invalid_status": 1,
+    "staging/orders/quantity_out_of_range": 1,
+    "staging/products/negative_unit_price": 1,
+    "curated/orders/orphan_customer_id": 1,
+    "curated/orders/orphan_product_id": 1,
+    "curated/orders/product_rejected_in_staging": 99
+  }
+}
+[exit code: 0]
+
+$ find data/raw data/staging data/curated data/quarantine -type f | sort
+data/curated/_latest_run.json
+data/curated/run_id=run_20260923T003445Z_074f7638/_run_summary.json
+data/curated/run_id=run_20260923T003445Z_074f7638/sales_order_lines.parquet
+data/curated/run_id=run_20260923T003504Z_28480a5b/_run_summary.json
+data/curated/run_id=run_20260923T003504Z_28480a5b/sales_order_lines.parquet
+data/quarantine/run_id=run_20260923T003445Z_074f7638/quarantine.parquet
+data/quarantine/run_id=run_20260923T003504Z_28480a5b/quarantine.parquet
+data/raw/_latest_run.json
+data/raw/run_id=run_20260923T003445Z_074f7638/_manifest.json
+data/raw/run_id=run_20260923T003445Z_074f7638/customers.csv
+data/raw/run_id=run_20260923T003445Z_074f7638/orders.csv
+data/raw/run_id=run_20260923T003445Z_074f7638/products.json
+data/raw/run_id=run_20260923T003504Z_28480a5b/_manifest.json
+data/raw/run_id=run_20260923T003504Z_28480a5b/customers.csv
+data/raw/run_id=run_20260923T003504Z_28480a5b/orders.csv
+data/raw/run_id=run_20260923T003504Z_28480a5b/products.json
+data/staging/run_id=run_20260923T003445Z_074f7638/customers.parquet
+data/staging/run_id=run_20260923T003445Z_074f7638/orders.parquet
+data/staging/run_id=run_20260923T003445Z_074f7638/products.parquet
+data/staging/run_id=run_20260923T003504Z_28480a5b/customers.parquet
+data/staging/run_id=run_20260923T003504Z_28480a5b/orders.parquet
+data/staging/run_id=run_20260923T003504Z_28480a5b/products.parquet
+[exit code: 0]
+
