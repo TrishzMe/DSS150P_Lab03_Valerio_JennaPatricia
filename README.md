@@ -54,7 +54,7 @@ Python 3.11+ (developed on 3.12.10), Git, Docker Desktop with Compose v2, and ab
 ## 1. Setup (Goal 1)
 
 ```bash
-cp .env.example .env            # then replace POSTGRES_PASSWORD (URL-safe characters only)
+cp .env.example .env            # then replace the placeholder passwords/key (URL-safe characters only)
 python -m venv .venv
 source .venv/bin/activate       # Windows PowerShell: .venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
@@ -137,8 +137,9 @@ docker exec dss150p-airflow-scheduler airflow dags unpause dss150p_sales_pipelin
 `airflow-webserver` and `airflow-scheduler` depend on `airflow-init` completing successfully, so the
 second `up` command also works on its own (the §11 sequence): it migrates the metadata DB first.
 
-UI: http://localhost:8080. The login comes from `AIRFLOW_ADMIN_USER` / `AIRFLOW_ADMIN_PASSWORD` in `.env`
-(`admin`/`admin` in `.env.example`; local training use only).
+UI: http://localhost:8080. Log in with the `AIRFLOW_ADMIN_USER` / `AIRFLOW_ADMIN_PASSWORD` you set in
+your `.env`. `airflow-init` creates that account on its first run, so set the password before starting
+Airflow. No credential is stored in any committed file.
 
 Unpausing starts the latest scheduled interval immediately (`catchup=False`, so only one). To
 trigger runs manually, from the UI (▶ with config) or the CLI:
